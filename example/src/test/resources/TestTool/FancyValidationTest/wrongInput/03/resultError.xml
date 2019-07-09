@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased"/>
+   <validation type="missingFields">
+      <error>No 'veld' elements could be found element 'formulier' in the provided input</error>
+      <pair>
+         <Field mandatory="true" name="simpleValue0"/>
+         <error>No element 'Veld' with attribute 'naam' with value 'simpleValue0' could be found in the provided input, while it is declared mandatory in the FormDefenition</error>
+      </pair>
+      <pair>
+         <Field mandatory="true" name="regexValue0">
+		          <Rule regex="^[0-9]{4} ?[a-zA-Z]{2}$" vType="regex"/>
+	        </Field>
+         <error>No element 'Veld' with attribute 'naam' with value 'regexValue0' could be found in the provided input, while it is declared mandatory in the FormDefenition</error>
+      </pair>
+   </validation>
+   <validation type="formDefFieldName"/>
+   <validation type="duplicateFormDefField"/>
+</validations>

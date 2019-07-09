@@ -1,0 +1,14 @@
+<project name="XmlRunner" default="init" basedir=".">
+	<description>Runs test.xsl</description>
+	<target name="init">
+		<antcall target="xslt"/>
+	</target>
+	<target name="xslt">
+		<xslt
+			style="./xsl/FancyValidator.xsl"
+			in="./in.xml"
+			out="./out.xml">
+			<factory name="net.sf.saxon.TransformerFactoryImpl"/>
+		</xslt>
+	</target>
+</project>

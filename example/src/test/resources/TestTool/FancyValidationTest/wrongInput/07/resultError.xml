@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased">
+      <field>
+         <name>field0</name>
+         <value>a</value>
+         <error>No element 'Field', with attribute 'name' with value 'field0', could be found in the provided FormDefenition</error>
+      </field>
+   </validation>
+   <validation type="missingFields"/>
+   <validation type="formDefFieldName">
+      <Field>
+         <Field mandatory="true" naam="field0"/>
+         <error>No value was specified for mandatory attribute 'name'</error>
+      </Field>
+   </validation>
+   <validation type="duplicateFormDefField"/>
+</validations>

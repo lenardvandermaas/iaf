@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased">
+      <field>
+         <name>simpleValue0</name>
+         <value/>
+         <madatory>true</madatory>
+         <validation>
+            <error>No value was specified for mandatory field: 'simpleValue0'</error>
+         </validation>
+      </field>
+      <field>
+         <name>regexValue0</name>
+         <value/>
+         <madatory>true</madatory>
+         <validation>
+            <error>No value was specified for mandatory field: 'regexValue0'</error>
+         </validation>
+      </field>
+   </validation>
+   <validation type="missingFields"/>
+   <validation type="formDefFieldName"/>
+   <validation type="duplicateFormDefField"/>
+</validations>

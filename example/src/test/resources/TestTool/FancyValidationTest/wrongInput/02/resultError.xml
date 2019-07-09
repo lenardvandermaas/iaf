@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased">
+      <field>
+         <name>simpleValue</name>
+         <value>a</value>
+         <error>No element 'Field', with attribute 'name' with value 'simpleValue', could be found in the provided FormDefenition</error>
+      </field>
+   </validation>
+   <validation type="missingFields">
+      <error>No 'Fields' element could be found in the provided FormDefenition</error>
+   </validation>
+   <validation type="formDefFieldName"/>
+   <validation type="duplicateFormDefField"/>
+</validations>

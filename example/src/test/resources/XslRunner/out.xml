@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased">
+      <field>
+         <name>firstName</name>
+         <value>Jeroen</value>
+         <madatory>true</madatory>
+      </field>
+      <field>
+         <name>lastName</name>
+         <value>Jansen</value>
+         <madatory>true</madatory>
+      </field>
+      <field>
+         <name>policyNumber</name>
+         <value>aa123579798</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[a-zA-Z]{2}|[0-9]{8}$</regex>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>accountNumber</name>
+         <value>NL55ABNA0881638293</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>iban</vType>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>age</name>
+         <value>51</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[0-9]|([1-9][0-9]{0,2})$</regex>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>fileDate</name>
+         <value>20-06-2019</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>date</vType>
+            <operator>lessThanEqualTo</operator>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>aavContractNumber</name>
+         <value>736160221</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>aavContractNumber</vType>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>elfproefField</name>
+         <value>736160221</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>elfproef</vType>
+            <weights>1,2,3,4,5,6,7,8,9,10</weights>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>negenproefField</name>
+         <value>123456789</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>negenproef</vType>
+            <expectedResult>0</expectedResult>
+            <validation>true</validation>
+         </rule>
+      </field>
+      <field>
+         <name>sector</name>
+         <value>f</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>multipleOption</vType>
+            <Options>
+				           <Option>a</Option>
+				           <Option>b</Option>
+				           <Option>c</Option>
+				           <Option>d</Option>
+				           <Option>e</Option>
+				           <Option>f</Option>
+				           <Option>g</Option>
+				           <Option>h</Option>
+			         </Options>
+            <validation>true</validation>
+         </rule>
+      </field>
+   </validation>
+   <validation type="missingInputField">
+	     <pair>
+         <Field name="firstName" mandatory="true"/>
+         <veld naam="firstName">Jeroen</veld>
+      </pair>
+	     <pair>
+         <Field name="lastName" mandatory="true"/>
+         <veld naam="lastName">Jansen</veld>
+      </pair>
+	     <pair>
+         <Field name="policyNumber" mandatory="true">
+		          <Rule vType="regex" regex="^[a-zA-Z]{2}|[0-9]{8}$"/>
+	        </Field>
+         <veld naam="policyNumber">aa123579798</veld>
+      </pair>
+	     <pair>
+         <Field name="accountNumber" mandatory="true">
+		          <Rule vType="iban"/>
+	        </Field>
+         <veld naam="accountNumber">NL55ABNA0881638293</veld>
+      </pair>
+	     <pair>
+         <Field name="age" mandatory="true">
+		          <Rule vType="regex" regex="^[0-9]|([1-9][0-9]{0,2})$"/>
+	        </Field>
+         <veld naam="age">51</veld>
+      </pair>
+	     <pair>
+         <Field name="fileDate" mandatory="true">
+		          <Rule vType="date" operator="lessThanEqualTo"/>
+	        </Field>
+         <veld naam="fileDate">20-06-2019</veld>
+      </pair>
+	     <pair>
+         <Field name="aavContractNumber" mandatory="true">
+		          <Rule vType="aavContractNumber"/>
+	        </Field>
+         <veld naam="aavContractNumber">736160221</veld>
+      </pair>
+	     <pair>
+         <Field name="elfproefField" mandatory="true">
+		          <Rule vType="elfproef" weights="1,2,3,4,5,6,7,8,9,10"/>
+	        </Field>
+         <veld naam="elfproefField">736160221</veld>
+      </pair>
+	     <pair>
+         <Field name="negenproefField" mandatory="true">
+		          <Rule vType="negenproef" expectedResult="0"/>
+	        </Field>
+         <veld naam="negenproefField">123456789</veld>
+      </pair>
+	     <pair>
+         <Field name="sector" mandatory="true">
+		          <Rule vType="multipleOption">
+			            <Options>
+				              <Option>a</Option>
+				              <Option>b</Option>
+				              <Option>c</Option>
+				              <Option>d</Option>
+				              <Option>e</Option>
+				              <Option>f</Option>
+				              <Option>g</Option>
+				              <Option>h</Option>
+			            </Options>
+		          </Rule>
+	        </Field>
+         <veld naam="sector">f</veld>
+      </pair>
+   </validation>
+   <validation type="duplicateFormDefField"/>
+</validations>

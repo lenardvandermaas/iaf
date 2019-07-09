@@ -1,0 +1,51 @@
+<adapter name="Validator">
+	<receiver
+		name="Validator"
+		className="nl.nn.adapterframework.receivers.GenericReceiver"
+		>
+		<listener
+			name="testtool-Validator"
+			className="nl.nn.adapterframework.receivers.JavaListener"
+		/>
+	</receiver>
+	<pipeline firstPipe="ifFormDefInSessionKey">
+		<exits>
+			<exit path="EXIT" state="success"/>
+		</exits>
+		<pipe
+			name="ifFormDefInSessionKey"
+			className="nl.nn.adapterframework.pipes.XmlIf"
+			getInputFromSessionKey="FormDef"
+			emptyInputReplacement=""
+			>
+			<forward name="then" path="runXSLT"/>
+			<forward name="else" path="getFormDefFromFile"/>
+		</pipe>
+		<pipe
+			name="getFormDefFromFile"
+			className="nl.nn.adapterframework.pipes.FixedResult"
+			fileName="FancyValidator/xsl/FormDef.xml"
+			storeResultInSessionKey="FormDef"
+			>
+			<forward name="success" path="runXSLT"/>
+		</pipe>
+		<pipe
+			name="runXSLT"
+			className="nl.nn.adapterframework.pipes.XsltPipe"
+			styleSheetName="FancyValidator/xsl/FancyValidator.xsl"
+			getInputFromSessionKey="originalMessage"
+			>
+			<param name="FormDef0" sessionKey="FormDef" type="domdoc"/>
+			<forward name="success" path="filterValidation"/>
+			<forward name="failure" path="EXIT"/>
+		</pipe>
+		<pipe
+			name="filterValidation"
+			className="nl.nn.adapterframework.pipes.XsltPipe"
+			styleSheetName="FancyValidator/xsl/FancyValidationFilter.xsl"
+			>
+			<forward name="success" path="EXIT"/>
+			<forward name="failure" path="EXIT"/>
+		</pipe>
+	</pipeline>
+</adapter>

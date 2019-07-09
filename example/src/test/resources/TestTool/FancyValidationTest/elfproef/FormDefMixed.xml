@@ -1,0 +1,11 @@
+<Fields>
+	<Field name="elfproef0" mandatory="true">
+		<Rule vType="elfproef"/>
+	</Field>
+	<Field name="elfproef1" mandatory="true">
+		<Rule vType="elfproef" weights="1,2,3,4,5,6,7,8,9,10"/>
+	</Field>
+	<Field name="elfproef2" mandatory="true">
+		<Rule vType="elfproef" weights="9,8,7,6,5,4,3,2,-1"/>
+	</Field>
+</Fields>

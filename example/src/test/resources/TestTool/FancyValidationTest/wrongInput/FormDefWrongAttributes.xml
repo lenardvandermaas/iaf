@@ -1,0 +1,4 @@
+<Fields>
+	<Field naam="field0" mandatory="true"/>
+	<Field name="field1" mandetory="true"/>
+</Fields>

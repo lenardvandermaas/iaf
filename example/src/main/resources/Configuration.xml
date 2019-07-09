@@ -2,13 +2,12 @@
 	<!ENTITY HelloWorld SYSTEM "ConfigurationHelloWorld.xml">
 	<!ENTITY HelloWorlds SYSTEM "ConfigurationHelloWorlds.xml">
 	<!ENTITY HelloBeautifulWorld SYSTEM "ConfigurationHelloBeautifulWorld.xml">
+	<!ENTITY Validator SYSTEM "ConfigurationValidator.xml">
 ]>
 <configuration name="Ibis4Example">
 	<jmsRealms>
 		<jmsRealm realmName="jdbc" datasourceName="jdbc/${instance.name.lc}"/>
 		<!-- jmsRealm realmName="qcf" queueConnectionFactoryName="jms/qcf"/ -->
 	</jmsRealms>
-	&HelloWorld;
-	&HelloWorlds;
-	&HelloBeautifulWorld;
+	&Validator;
 </configuration>

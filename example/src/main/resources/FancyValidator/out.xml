@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <FormDef>
+      <Fields>
+	        <Field name="regexValue0" mandatory="true">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+	        <Field name="regexValue1" mandatory="false">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+      </Fields>
+   </FormDef>
+   <validation type="inputBased">
+      <field>
+         <name>regexValue0</name>
+         <value>TJ4461</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[0-9]{4} ?[a-zA-Z]{2}$</regex>
+            <validation>
+               <error>provided input value doesn't match regex specified by FormDefenition</error>
+            </validation>
+         </rule>
+      </field>
+      <field>
+         <name>regexValue1</name>
+         <value>TJ4461</value>
+         <madatory>false</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[0-9]{4} ?[a-zA-Z]{2}$</regex>
+            <validation>
+               <error>provided input value doesn't match regex specified by FormDefenition</error>
+            </validation>
+         </rule>
+      </field>
+   </validation>
+   <validation type="missingFields">
+      <pair>
+         <Field name="regexValue0" mandatory="true">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+         <veld naam="regexValue0">TJ4461</veld>
+      </pair>
+      <pair>
+         <Field name="regexValue1" mandatory="false">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+         <veld naam="regexValue1">TJ4461</veld>
+      </pair>
+   </validation>
+   <validation type="formDefFieldName">
+      <Field>
+         <Field name="regexValue0" mandatory="true">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+      </Field>
+      <Field>
+         <Field name="regexValue1" mandatory="false">
+		          <Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	        </Field>
+      </Field>
+   </validation>
+   <validation type="duplicateFormDefField"/>
+</validations>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validations xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:validations="http://nn.nl/xsl/validations">
+   <validation type="inputBased">
+      <field>
+         <name>regexValue0</name>
+         <value>TJ4461</value>
+         <madatory>true</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[0-9]{4} ?[a-zA-Z]{2}$</regex>
+            <validation>
+               <error>provided input value doesn't match regex specified by FormDefenition</error>
+            </validation>
+         </rule>
+      </field>
+      <field>
+         <name>regexValue1</name>
+         <value>TJ4461</value>
+         <madatory>false</madatory>
+         <rule>
+            <vType>regex</vType>
+            <regex>^[0-9]{4} ?[a-zA-Z]{2}$</regex>
+            <validation>
+               <error>provided input value doesn't match regex specified by FormDefenition</error>
+            </validation>
+         </rule>
+      </field>
+   </validation>
+   <validation type="missingFields"/>
+   <validation type="formDefFieldName"/>
+   <validation type="duplicateFormDefField"/>
+</validations>

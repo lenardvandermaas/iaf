@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<formulier>
+<veld naam="firstName">Jeroen</veld>
+<veld naam="lastName">Jansen</veld>
+<veld naam="policyNumber">aa123579798</veld>
+<veld naam="accountNumber">NL55ABNA0881638293</veld>
+<veld naam="age">51</veld>
+<veld naam="fileDate">20-06-2019</veld>
+<veld naam="aavContractNumber">736160221</veld>
+<veld naam="elfproefField">736160221</veld>
+<veld naam="negenproefField">123456789</veld>
+<veld naam="sector">f</veld>
+</formulier>

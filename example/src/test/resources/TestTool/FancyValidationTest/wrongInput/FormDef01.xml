@@ -1,0 +1,10 @@
+<Fields>
+	<Field name="simpleValue0" mandatory="true"/>
+	<Field name="regexValue0" mandatory="true">
+		<Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	</Field>
+	<Field name="simpleValue1" mandatory="false"/>
+	<Field name="regexValue1" mandatory="false">
+		<Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	</Field>
+</Fields>

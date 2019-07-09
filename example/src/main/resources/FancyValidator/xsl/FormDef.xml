@@ -1,0 +1,8 @@
+<Fields>
+	<Field name="regexValue0" mandatory="true">
+		<Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	</Field>
+	<Field name="regexValue1" mandatory="false">
+		<Rule vType="regex" regex="^[0-9]{4} ?[a-zA-Z]{2}$"/>
+	</Field>
+</Fields>
