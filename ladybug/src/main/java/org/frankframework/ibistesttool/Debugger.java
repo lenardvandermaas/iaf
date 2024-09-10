@@ -25,7 +25,7 @@ import java.util.Set;
 import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.Configuration;
 import org.frankframework.configuration.IbisManager;
-import org.frankframework.core.IAdapter;
+import org.frankframework.core.Adapter;
 import org.frankframework.core.IListener;
 import org.frankframework.core.INamedObject;
 import org.frankframework.core.IPipe;
@@ -34,9 +34,10 @@ import org.frankframework.core.PipeLine;
 import org.frankframework.core.PipeLineResult;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.management.bus.DebuggerStatusChangedEvent;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.stream.Message;
 import org.frankframework.util.LogUtil;
+import org.frankframework.util.MessageUtils;
 import org.frankframework.util.RunState;
 import org.frankframework.util.StringUtil;
 import org.frankframework.util.UUIDUtil;
@@ -91,22 +92,27 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 	}
 
 	@Override
-	public Message pipeLineInput(PipeLine pipeLine, String correlationId, Message input) {
+	public Message pipelineInput(PipeLine pipeLine, String correlationId, Message input) {
 		return testTool.startpoint(correlationId, pipeLine.getClass().getName(), "Pipeline " + pipeLine.getOwner().getName(), input);
 	}
 
 	@Override
-	public Object pipeLineSessionKey(String correlationId, String sessionKey, Object sessionValue) {
+	public Object pipelineSessionKey(String correlationId, String sessionKey, Object sessionValue) {
 		return testTool.inputpoint(correlationId, null, "SessionKey " + sessionKey, sessionValue);
 	}
 
 	@Override
-	public Message pipeLineOutput(PipeLine pipeLine, String correlationId, Message output) {
+	public Message pipelineOutput(PipeLine pipeLine, String correlationId, Message output) {
 		return testTool.endpoint(correlationId, pipeLine.getClass().getName(), "Pipeline " + pipeLine.getOwner().getName(), output);
 	}
 
 	@Override
-	public Throwable pipeLineAbort(PipeLine pipeLine, String correlationId, Throwable throwable) {
+	public Message pipelineAbort(PipeLine pipeLine, String correlationId, Message output) {
+		return testTool.abortpoint(correlationId, pipeLine.getClass().getName(), "Pipeline " + pipeLine.getOwner().getName(), output);
+	}
+
+	@Override
+	public Throwable pipelineAbort(PipeLine pipeLine, String correlationId, Throwable throwable) {
 		testTool.abortpoint(correlationId, pipeLine.getClass().getName(), "Pipeline " + pipeLine.getOwner().getName(), throwable);
 		return throwable;
 	}
@@ -217,12 +223,12 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 	}
 
 	@Override
-	public Object parameterResolvedTo(Parameter parameter, String correlationId, Object value) {
+	public Object parameterResolvedTo(IParameter parameter, String correlationId, Object value) {
 		if (parameter.isHidden()) {
 			log.debug("hiding parameter [{}] value", parameter::getName);
 			String hiddenValue;
 			try {
-				hiddenValue = StringUtil.hide(Message.asString(value));
+				hiddenValue = StringUtil.hide(MessageUtils.asString(value));
 			} catch (IOException e) {
 				hiddenValue = "IOException while hiding value for parameter " + parameter.getName() + ": " + e.getMessage();
 				log.warn(hiddenValue, e);
@@ -239,10 +245,14 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 	}
 
 	@Override
-	public <T> T showValue(String correlationId, String label, T value) {
+	public <T> T showInputValue(String correlationId, String label, T value) {
 		return testTool.inputpoint(correlationId, null, label, value);
 	}
 
+	@Override
+	public <T> T showOutputValue(String correlationId, String label, T value) {
+		return testTool.outputpoint(correlationId, null, label, value);
+	}
 
 	@Override
 	public Message preserveInput(String correlationId, Message input) {
@@ -250,8 +260,8 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 	}
 
 	/** Get all configurations */
-	private List<IAdapter> getRegisteredAdapters() {
-		List<IAdapter> registeredAdapters = new ArrayList<>();
+	private List<Adapter> getRegisteredAdapters() {
+		List<Adapter> registeredAdapters = new ArrayList<>();
 		for (Configuration configuration : ibisManager.getConfigurations()) {
 			if(configuration.isActive()) {
 				registeredAdapters.addAll(configuration.getRegisteredAdapters());
@@ -261,9 +271,9 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 	}
 
 	/** Best effort attempt to locate the adapter. */
-	private IAdapter getRegisteredAdapter(String name) {
-		List<IAdapter> adapters = getRegisteredAdapters();
-		for (IAdapter adapter : adapters) {
+	private Adapter getRegisteredAdapter(String name) {
+		List<Adapter> adapters = getRegisteredAdapters();
+		for (Adapter adapter : adapters) {
 			if (name.equals(adapter.getName())) {
 				return adapter;
 			}
@@ -281,7 +291,7 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 			if (checkpointName.startsWith("Pipeline ")) {
 				String pipelineName = checkpointName.substring("Pipeline ".length());
 				Message inputMessage = new Message(checkpoint.getMessageWithResolvedVariables(reportRunner));
-				IAdapter adapter = getRegisteredAdapter(pipelineName);
+				Adapter adapter = getRegisteredAdapter(pipelineName);
 				if (adapter != null) {
 					RunState runState = adapter.getRunState();
 					if (runState == RunState.STARTED) {
@@ -311,7 +321,7 @@ public class Debugger implements IbisDebugger, nl.nn.testtool.Debugger, Applicat
 								// Analog to test a pipeline that is using: "testmessage" + Misc.createSimpleUUID();
 								String messageId = "ladybug-testmessage" + UUIDUtil.createSimpleUUID();
 								pipeLineSession.put(PipeLineSession.CORRELATION_ID_KEY, correlationId);
-								PipeLineResult result = adapter.processMessage(messageId, inputMessage, pipeLineSession);
+								PipeLineResult result = adapter.processMessageDirect(messageId, inputMessage, pipeLineSession);
 								try {
 									result.getResult().close();
 								} catch (IOException e) {

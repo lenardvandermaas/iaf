@@ -14,6 +14,12 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.hamcrest.Matchers;
+import org.hamcrest.core.StringContains;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Test;
+
+import jakarta.annotation.Nonnull;
 import org.frankframework.core.PipeForward;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.PipeRunResult;
@@ -29,10 +35,6 @@ import org.frankframework.testutil.TestAssertions;
 import org.frankframework.testutil.TestFileUtils;
 import org.frankframework.util.AppConstants;
 import org.frankframework.util.XmlUtils;
-import org.hamcrest.Matchers;
-import org.hamcrest.core.StringContains;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ConcurrentTaskExecutor;
 
 public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElementPipe> {
@@ -132,7 +134,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		}
 
 		@Override
-		public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+		public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 			callCounter++;
 			if (sc!=null) sc.mark("out");
 			try {
@@ -165,8 +167,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNoNS, session);
-		String actual = Message.asString(prr.getResult());
-
+		String actual = prr.getResult().asString();
 		assertEquals(expectedBasicNoNS, actual);
 	}
 
@@ -180,7 +181,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		String messageBasicJson = "<root><sub><data>{\"children\":{\"child\":\"1\"}}</data></sub><sub><data>{\"children\":{\"child\":\"2\"}}</data></sub><sub><data>{\"children\":{\"child\":\"3\"}}</data></sub></root>";
 		PipeRunResult prr = doPipe(pipe, messageBasicJson, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		String expectedBasicJsonConversion = """
 				<results>
@@ -206,7 +207,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNoNS, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		String expectedBasicNoNSBlock = "<results>\n" +
 				"<result item=\"1\">\n" +
@@ -226,7 +227,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNoNS, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		String expectedBasicNoNSBlockSize1 = "<results>\n" +
 				"<result item=\"1\">\n" +
@@ -344,7 +345,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNS1, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 	}
@@ -357,7 +358,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNS2, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 	}
@@ -371,7 +372,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNS1, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 	}
@@ -385,7 +386,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		pipe.start();
 
 		PipeRunResult prr = doPipe(pipe, messageBasicNS2, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS2, actual);
 	}
@@ -402,7 +403,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -421,7 +422,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		String expectedBasicOnlyR = """
 				<results>
@@ -445,7 +446,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -464,7 +465,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS2.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -482,7 +483,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -500,7 +501,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS2.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS2, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -519,7 +520,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -536,7 +537,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstTwoElements, actual);
 		Assumptions.assumeTrue(AppConstants.getInstance().getBoolean(XmlUtils.XSLT_STREAMING_BY_DEFAULT_KEY, true), "Streaming XSLT switched off");
@@ -556,7 +557,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(wrappedMessage.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -575,7 +576,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(wrappedMessage.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -595,7 +596,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(wrappedMessage.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -613,7 +614,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -630,7 +631,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNS, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -647,7 +648,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -666,7 +667,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String messageDuplNamespace1 = "<root xmlns=\"urn:test\"><header xmlns=\"urn:header\">x</header><sub xmlns=\"urn:test\">A &amp; B</sub><sub xmlns=\"urn:test\" name=\"p &amp; Q\">" + CDATA_START + "<a>a &amp; b</a>" + CDATA_END + "</sub><sub xmlns=\"urn:test\" name=\"r\">R</sub></root>";
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageDuplNamespace1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS1, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -685,7 +686,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String messageDuplNamespace2 = "<ns:root xmlns:ns=\"urn:test\"><header xmlns=\"urn:header\">x</header><ns:sub xmlns:ns=\"urn:test\">A &amp; B</ns:sub><ns:sub xmlns:ns=\"urn:test\" name=\"p &amp; Q\">" + CDATA_START + "<a>a &amp; b</a>" + CDATA_END + "</ns:sub><ns:sub xmlns:ns=\"urn:test\" name=\"r\">R</ns:sub></ns:root>";
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageDuplNamespace2.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNS2, actual);
 		assertTrue(sc.count > 2, "streaming failure: switch count [" + sc.count + "] should be larger than 2");
@@ -701,7 +702,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		// System.out.println("num reads="+sc.hitCount.get("in"));
 		assertThat(sc.hitCount.get("in"), Matchers.lessThan(17));
@@ -719,7 +720,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		// System.out.println("num reads="+sc.hitCount.get("in"));
 		assertThat(sc.hitCount.get("in"), Matchers.lessThan(17));
@@ -737,7 +738,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		// System.out.println("num reads="+sc.hitCount.get("in"));
 		assertThat(sc.hitCount.get("in"), Matchers.lessThan(17));
@@ -755,7 +756,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstElement, actual);
 		// System.out.println("num reads="+sc.hitCount.get("in"));
@@ -773,7 +774,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNS.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstElement, actual);
 		// System.out.println("num reads="+sc.hitCount.get("in"));
@@ -791,7 +792,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNSLong.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstTwoElements, actual);
 		// System.out.println("num reads="+sc.hitCount.get("in"));
@@ -809,7 +810,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNSLong.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstTwoElements, actual);
 		// System.out.println("num reads="+sc.hitCount.get("in"));
@@ -827,7 +828,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNSLong.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expectedBasicNoNSFirstTwoElements, actual);
 		// System.out.println("num reads="+sc.hitCount.get("in"));
@@ -847,7 +848,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNSLong.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 		assertThat(sc.hitCount.get("in"), Matchers.lessThan(11));
@@ -866,7 +867,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNoNSLong.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 		assertThat(sc.hitCount.get("in"), Matchers.lessThan(20));
@@ -885,7 +886,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 //        assertThat(sc.hitCount.get("in"), Matchers.lessThan(11));
@@ -904,7 +905,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS2.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 //        assertThat(sc.hitCount.get("in"), Matchers.lessThan(11));
@@ -923,7 +924,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS1.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 //        assertThat(sc.hitCount.get("in"), Matchers.lessThan(11));
@@ -942,7 +943,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(messageBasicNS2.getBytes());
 		PipeRunResult prr = doPipe(pipe, new LoggingInputStream(bais, sc), session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 //		assertTrue("streaming failure: switch count ["+sc.count+"] should be larger than 2",sc.count>2);
 //        assertThat(sc.hitCount.get("in"), Matchers.lessThan(11));
@@ -961,7 +962,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String input = TestFileUtils.getTestFile("/ForEachChildElementPipe/xdocs.xml");
 		String expected = TestFileUtils.getTestFile("/ForEachChildElementPipe/ForEachChildElementPipe-Result.txt");
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 	}
@@ -978,7 +979,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String input = TestFileUtils.getTestFile("/ForEachChildElementPipe/bulk2.xml");
 		String expected = TestFileUtils.getTestFile("/ForEachChildElementPipe/bulk2out.xml");
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 	}
@@ -998,7 +999,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String input = TestFileUtils.getTestFile("/ForEachChildElementPipe/bulk2.xml");
 		String expected = TestFileUtils.getTestFile("/ForEachChildElementPipe/bulk2out.xml");
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 	}
@@ -1014,7 +1015,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String input = TestFileUtils.getTestFile("/ForEachChildElementPipe/NamespaceCaseIn.xml");
 		String expected = TestFileUtils.getTestFile("/ForEachChildElementPipe/NamespaceCaseOut.xml");
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 	}
@@ -1030,7 +1031,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		String input = TestFileUtils.getTestFile("/ForEachChildElementPipe/NamespacedXPath/input.xml");
 		String expected = TestFileUtils.getTestFile("/ForEachChildElementPipe/NamespacedXPath/expected.xml");
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 	}
@@ -1051,7 +1052,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		File file = new File(input.toURI());
 		String expected = TestFileUtils.getTestFile("/XmlFileElementIteratorPipe/ElementNameOutput.xml");
 		PipeRunResult prr = doPipe(pipe, file.toString(), session);
-		String result = Message.asString(prr.getResult());
+		String result = prr.getResult().asString();
 		TestAssertions.assertEqualsIgnoreCRLF(expected, result);
 	}
 
@@ -1073,7 +1074,7 @@ public class ForEachChildElementPipeTest extends PipeTestBase<ForEachChildElemen
 		File file = new File(input.toURI());
 		String expected = TestFileUtils.getTestFile("/XmlFileElementIteratorPipe/ElementChainOutput.xml");
 		PipeRunResult prr = doPipe(pipe, file.toString(), session);
-		String result = Message.asString(prr.getResult());
+		String result = prr.getResult().asString();
 		TestAssertions.assertEqualsIgnoreCRLF(expected, result);
 	}
 

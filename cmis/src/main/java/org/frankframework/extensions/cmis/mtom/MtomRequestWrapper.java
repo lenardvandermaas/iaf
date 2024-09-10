@@ -21,19 +21,18 @@ import java.io.IOException;
 
 import jakarta.mail.BodyPart;
 import jakarta.mail.internet.MimeMultipart;
-import javax.servlet.ServletInputStream;
-import javax.servlet.ServletRequest;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletRequestWrapper;
-
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.logging.log4j.Logger;
-import org.springframework.mock.web.DelegatingServletInputStream;
-
 import org.frankframework.http.InputStreamDataSource;
 import org.frankframework.http.mime.MultipartEntityBuilder;
 import org.frankframework.util.LogUtil;
+import org.springframework.mock.web.DelegatingServletInputStream;
 
 public class MtomRequestWrapper extends HttpServletRequestWrapper {
 	protected Logger log = LogUtil.getLogger(this);
@@ -51,7 +50,7 @@ public class MtomRequestWrapper extends HttpServletRequestWrapper {
 		String contentType = super.getHeader("content-type");
 		if("POST".equalsIgnoreCase(request.getMethod())) {
 			try {
-				if(log.isTraceEnabled()) log.trace("found message with ContentType ["+contentType+"]");
+				log.trace("found message with ContentType [{}]", contentType);
 				boolean isMultipartRequest = contentType.contains("multipart");
 				MultipartEntityBuilder multipart = MultipartEntityBuilder.create();
 				multipart.setMtomMultipart();
@@ -73,7 +72,10 @@ public class MtomRequestWrapper extends HttpServletRequestWrapper {
 						}
 
 						ContentType partType = ContentType.parse(bp.getContentType());
-						if(log.isTraceEnabled()) log.trace("FileName ["+fileName+"] PartName ["+bodyPartName+"] ContentType [" + partType + "]");
+						log.trace("FileName [{}] PartName [{}] ContentType [{}]",
+								StringEscapeUtils.escapeJava(fileName),
+								StringEscapeUtils.escapeJava(bodyPartName),
+								StringEscapeUtils.escapeJava(partType.toString()));
 						multipart.addBinaryBody(bodyPartName, bp.getInputStream(), partType, fileName);
 
 					}

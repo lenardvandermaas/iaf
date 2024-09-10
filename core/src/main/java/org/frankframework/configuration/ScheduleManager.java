@@ -1,5 +1,5 @@
 /*
-   Copyright 2021-2023 WeAreFrank!
+   Copyright 2021-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -21,27 +21,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.frankframework.lifecycle.AbstractConfigurableLifecyle;
+import org.frankframework.lifecycle.ConfiguringLifecycleProcessor;
+import org.frankframework.scheduler.SchedulerHelper;
+import org.frankframework.scheduler.job.IJob;
+import org.frankframework.util.RunState;
 import org.quartz.SchedulerException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.frankframework.lifecycle.ConfigurableLifecyleBase;
-import org.frankframework.scheduler.SchedulerHelper;
-import org.frankframework.scheduler.job.IJob;
-import org.frankframework.util.RunState;
 
 /**
  * Container for jobs that are scheduled for periodic execution.
+ * <p>
+ * Configure/start/stop lifecycles are managed by Spring.
+ * @see ConfiguringLifecycleProcessor
  *
  * @author Niels Meijer
  *
  */
-/*
- * Configure/start/stop lifecycles are managed by Spring. See {@link ConfiguringLifecycleProcessor}
- */
-public class ScheduleManager extends ConfigurableLifecyleBase implements ApplicationContextAware, AutoCloseable {
+public class ScheduleManager extends AbstractConfigurableLifecyle implements ApplicationContextAware, AutoCloseable {
 
 	private @Getter @Setter ApplicationContext applicationContext;
 	private @Getter @Setter SchedulerHelper schedulerHelper;
@@ -63,6 +64,11 @@ public class ScheduleManager extends ConfigurableLifecyleBase implements Applica
 				throw new ConfigurationException("could not schedule job [" + jobdef.getName() + "] cron [" + jobdef.getCronExpression() + "]", e);
 			}
 		}
+	}
+
+	@Override
+	public int getPhase() {
+		return 200;
 	}
 
 	/**
@@ -178,11 +184,11 @@ public class ScheduleManager extends ConfigurableLifecyleBase implements Applica
 	@Override
 	public String toString() {
 		StringBuilder builder = new StringBuilder();
-		builder.append(getClass().getSimpleName() + "@" + Integer.toHexString(hashCode()));
-		builder.append(" state ["+getState()+"]");
-		builder.append(" schedules ["+schedules.size()+"]");
+		builder.append(getClass().getSimpleName() + "@").append(Integer.toHexString(hashCode()));
+		builder.append(" state [").append(getState()).append("]");
+		builder.append(" schedules [").append(schedules.size()).append("]");
 		if(applicationContext != null) {
-			builder.append(" applicationContext ["+applicationContext.getDisplayName()+"]");
+			builder.append(" applicationContext [").append(applicationContext.getDisplayName()).append("]");
 		}
 		return builder.toString();
 	}

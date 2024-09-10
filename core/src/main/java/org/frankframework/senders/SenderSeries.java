@@ -15,13 +15,15 @@
 */
 package org.frankframework.senders;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.annotation.Nonnull;
-
+import io.micrometer.core.instrument.DistributionSummary;
+import jakarta.annotation.Nonnull;
+import lombok.Getter;
+import lombok.Setter;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.AdapterAware;
 import org.frankframework.core.ISender;
@@ -32,10 +34,6 @@ import org.frankframework.core.TimeoutException;
 import org.frankframework.statistics.FrankMeterType;
 import org.frankframework.stream.Message;
 
-import io.micrometer.core.instrument.DistributionSummary;
-import lombok.Getter;
-import lombok.Setter;
-
 /**
  * Series of Senders, that are executed one after another.
  *
@@ -44,7 +42,7 @@ import lombok.Setter;
  */
 public class SenderSeries extends SenderWrapperBase {
 
-	private final List<ISender> senderList = new LinkedList<>();
+	private final List<ISender> senderList = new ArrayList<>();
 	private final Map<ISender, DistributionSummary> statisticsMap = new ConcurrentHashMap<>();
 	private @Getter @Setter boolean synchronous=true;
 
@@ -82,11 +80,12 @@ public class SenderSeries extends SenderWrapperBase {
 
 	@Override
 	public SenderResult doSendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
-		String correlationID = session==null ? null : session.getCorrelationId();
+		String correlationID = session.getCorrelationId();
 		SenderResult result=null;
 		long t1 = System.currentTimeMillis();
 		for (ISender sender: getSenders()) {
-			if (log.isDebugEnabled()) log.debug(getLogPrefix()+"sending correlationID ["+correlationID+"] message ["+message+"] to sender ["+sender.getName()+"]");
+			if (log.isDebugEnabled())
+				log.debug("sending correlationID [{}] message [{}] to sender [{}]", correlationID, message, sender.getName());
 			result = sender.sendMessage(message, session);
 			if (!result.isSuccess()) {
 				return result;

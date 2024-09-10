@@ -17,10 +17,9 @@ package org.frankframework.configuration;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.context.ApplicationContext;
-
-import org.frankframework.core.IAdapter;
+import org.frankframework.core.Adapter;
 import org.frankframework.core.IConfigurationAware;
+import org.springframework.context.ApplicationContext;
 
 public class ConfigurationWarnings extends ApplicationWarningsBase {
 
@@ -44,16 +43,16 @@ public class ConfigurationWarnings extends ApplicationWarningsBase {
 	}
 
 	/**
-	 * Add a (globally-)suppressable ConfigurationWarning with INamedObject prefix
+	 * Add a (globally-)suppressible ConfigurationWarning with INamedObject prefix
 	 */
 	public static void add(IConfigurationAware source, Logger log, String message, SuppressKeys suppressionKey) {
 		add(source, log, message, suppressionKey, null);
 	}
 
 	/**
-	 * Add a suppressable ConfigurationWarning with INamedObject prefix
+	 * Add a suppressible ConfigurationWarning with INamedObject prefix
 	 */
-	public static void add(IConfigurationAware source, Logger log, String message, SuppressKeys suppressionKey, IAdapter adapter) {
+	public static void add(IConfigurationAware source, Logger log, String message, SuppressKeys suppressionKey, Adapter adapter) {
 		ConfigurationWarnings instance = getInstance(source); //We could call two statics, this prevents a double getInstance(..) lookup.
 		if(instance != null) {
 			instance.add((Object) source, log, message, suppressionKey, adapter);
@@ -73,14 +72,14 @@ public class ConfigurationWarnings extends ApplicationWarningsBase {
 		ApplicationContext applicationContext = source.getApplicationContext();
 		if(applicationContext == null) {
 			IllegalArgumentException e = new IllegalArgumentException("ApplicationContext may not be NULL");
-			LogManager.getLogger(ConfigurationWarnings.class).warn("Unable to retrieve ApplicationContext from source ["+source+"]", e);
+			LogManager.getLogger(ConfigurationWarnings.class).warn("Unable to retrieve ApplicationContext from source [{}]", source, e);
 			return null;
 		}
 
 		return applicationContext.getBean("configurationWarnings", ConfigurationWarnings.class);
 	}
 
-	private boolean doIsSuppressed(SuppressKeys key, IAdapter adapter) {
+	private boolean doIsSuppressed(SuppressKeys key, Adapter adapter) {
 		if(key == null) {
 			throw new IllegalArgumentException("SuppressKeys may not be NULL");
 		}
@@ -98,7 +97,7 @@ public class ConfigurationWarnings extends ApplicationWarningsBase {
 		return key.isAllowGlobalSuppression() && getAppConstants().getBoolean(key.getKey(), false); // warning is suppressed globally, for all adapters
 	}
 
-	public static boolean isSuppressed(SuppressKeys key, IAdapter adapter) {
+	public static boolean isSuppressed(SuppressKeys key, Adapter adapter) {
 		ConfigurationWarnings instance = getInstance(adapter);
 		if(instance == null) {
 			throw new IllegalArgumentException("ConfigurationWarnings not initialized");
@@ -107,7 +106,7 @@ public class ConfigurationWarnings extends ApplicationWarningsBase {
 		return instance.doIsSuppressed(key, adapter);
 	}
 
-	public void add(Object source, Logger log, String message, SuppressKeys suppressionKey, IAdapter adapter) {
+	public void add(Object source, Logger log, String message, SuppressKeys suppressionKey, Adapter adapter) {
 		if(!doIsSuppressed(suppressionKey, adapter)) {
 			// provide suppression hint as info
 			String hint = null;

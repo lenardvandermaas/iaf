@@ -1,5 +1,5 @@
 /*
-   Copyright 2019-2022 WeAreFrank!
+   Copyright 2019-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -33,13 +33,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nonnull;
-
 import com.microsoft.aad.msal4j.ClientCredentialFactory;
 import com.microsoft.aad.msal4j.ClientCredentialParameters;
 import com.microsoft.aad.msal4j.ConfidentialClientApplication;
 import com.microsoft.aad.msal4j.IAuthenticationResult;
 
+import jakarta.annotation.Nullable;
 import jakarta.mail.internet.InternetAddress;
 import lombok.Getter;
 import lombok.Setter;
@@ -283,21 +282,21 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 		} else {
 			inboxId = new FolderId(WellKnownFolderName.Inbox);
 		}
-		log.debug("determined inbox [" + inboxId + "] foldername [" + inboxId.getFolderName() + "]");
+		log.debug("determined inbox [{}] foldername [{}]", ()->inboxId, inboxId::getFolderName);
 
 		FolderId basefolderId;
 		if (StringUtils.isNotEmpty(baseFolderName)) {
 			try {
 				basefolderId = findFolder(inboxId, baseFolderName);
 			} catch (Exception e) {
-				throw new FileSystemException("Could not find baseFolder [" + baseFolderName + "] as subfolder of [" + inboxId.getFolderName() + "]", e);
+				throw new FolderNotFoundException("Could not find baseFolder [" + baseFolderName + "] as subfolder of [" + inboxId.getFolderName() + "]", e);
 			}
 			if (basefolderId == null) {
-				log.debug("Could not get baseFolder [" + baseFolderName + "] as subfolder of [" + inboxId.getFolderName() + "]");
+				log.debug("Could not get baseFolder [{}] as subfolder of [{}]", ()->baseFolderName, inboxId::getFolderName);
 				basefolderId = findFolder(null, baseFolderName);
 			}
 			if (basefolderId == null) {
-				throw new FileSystemException("Could not find baseFolder [" + baseFolderName + "]");
+				throw new FolderNotFoundException("Could not find baseFolder [" + baseFolderName + "]");
 			}
 		} else {
 			basefolderId = inboxId;
@@ -393,7 +392,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 	}
 
 	/**
-	 * find a folder for listFiles(), getNumberOfFilesInFolder(), folderExists.
+	 * find a folder for list(), getNumberOfFilesInFolder(), folderExists.
 	 * If folderName is empty, the result defaults to the baseFolder.
 	 * If baseFolder is null, the folder is searched in the root of the message folder hierarchy.
 	 * If the folder is not found, null is returned.
@@ -430,7 +429,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 				findFoldersResultsIn = exchangeService.findFolders(WellKnownFolderName.MsgFolderRoot, searchFilterIn, folderViewIn);
 			}
 		} catch (Exception e) {
-			throw new FileSystemException("Cannot find folder [" + targetFolder.getObjectName() + "]", e);
+			throw new FolderNotFoundException("Cannot find folder [" + targetFolder.getObjectName() + "]", e);
 		}
 		if (findFoldersResultsIn.getTotalCount() == 0) {
 			log.debug("no folder found with name [{}] in basefolder [{}]", targetFolder::getObjectName, targetFolder::getBaseFolderId);
@@ -457,7 +456,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 	}
 
 	@Override
-	public ExchangeMessageReference toFile(@Nonnull String filename) throws FileSystemException {
+	public ExchangeMessageReference toFile(@Nullable String filename) throws FileSystemException {
 		log.debug("Get EmailMessage for reference [{}]", filename);
 		ExchangeObjectReference reference = asObjectReference(filename);
 		ExchangeService exchangeService = getConnection(reference);
@@ -475,7 +474,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 	}
 
 	@Override
-	public ExchangeMessageReference toFile(String folder, @Nonnull String filename) throws FileSystemException {
+	public ExchangeMessageReference toFile(@Nullable String folder, @Nullable String filename) throws FileSystemException {
 		return toFile(filename);
 	}
 
@@ -511,11 +510,18 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 		}
 	}
 
+	@Override
+	public boolean isFolder(ExchangeMessageReference exchangeMessageReference) {
+		return false; // Currently only supports messages
+	}
 
 	@Override
-	public DirectoryStream<ExchangeMessageReference> listFiles(final String folder) throws FileSystemException {
+	public DirectoryStream<ExchangeMessageReference> list(final String folder, TypeFilter filter) throws FileSystemException {
 		if (!isOpen()) {
 			return null;
+		}
+		if (filter.includeFolders()) {
+			throw new FileSystemException("Filtering on folders is not supported");
 		}
 		final ExchangeObjectReference reference = asObjectReference(folder);
 		final ExchangeService exchangeService = getConnection(reference);
@@ -524,7 +530,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 		try {
 			FolderId folderId = findFolder(reference);
 			if (folderId == null) {
-				throw new FileSystemException("Cannot find folder [" + folder + "]");
+				throw new FolderNotFoundException("Cannot find folder [" + folder + "]");
 			}
 			ItemView view = new ItemView(getMaxNumberOfMessagesToList() < 0 ? 100 : getMaxNumberOfMessagesToList());
 			view.getOrderBy().add(ItemSchema.DateTimeReceived, SortDirection.Ascending);
@@ -539,7 +545,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 				return FileSystemUtils.getDirectoryStream((Iterator<ExchangeMessageReference>) null);
 			}
 			Iterator<Item> itemIterator = findResults.getItems().iterator();
-			DirectoryStream<ExchangeMessageReference> result = FileSystemUtils.getDirectoryStream(new Iterator<ExchangeMessageReference>() {
+			DirectoryStream<ExchangeMessageReference> result = FileSystemUtils.getDirectoryStream(new Iterator<>() {
 
 				@Override
 				public boolean hasNext() {
@@ -551,7 +557,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 					return ExchangeMessageReference.of(reference, (EmailMessage) itemIterator.next());
 				}
 
-			}, (Runnable) () -> releaseConnection(exchangeService, false));
+			}, () -> releaseConnection(exchangeService, false));
 			closeConnectionOnExit = false;
 			return result;
 		} catch (Exception e) {
@@ -573,7 +579,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 		ExchangeService exchangeService = getConnection(reference);
 		FolderId folderId = findFolder(exchangeService, reference);
 		if (folderId == null) {
-			throw new FileSystemException("Cannot find folder [" + foldername + "]");
+			throw new FolderNotFoundException("Cannot find folder [" + foldername + "]");
 		}
 		boolean invalidateConnectionOnRelease = false;
 		try {
@@ -632,12 +638,12 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 		try {
 			f.getMessage().delete(DeleteMode.MoveToDeletedItems);
 		} catch (Exception e) {
-			throw new FileSystemException("Could not delete Exchange Message [" + getCanonicalName(f) + "]: " + e.getMessage());
+			throw new FileSystemException("Could not delete Exchange Message [" + getCanonicalNameOrErrorMessage(f) + "]: " + e.getMessage());
 		}
 	}
 
 	@Override
-	public ExchangeMessageReference moveFile(ExchangeMessageReference f, String destinationFolder, boolean createFolder, boolean resultantMustBeReturned) throws FileSystemException {
+	public ExchangeMessageReference moveFile(ExchangeMessageReference f, String destinationFolder, boolean createFolder) throws FileSystemException {
 		ExchangeObjectReference reference = asObjectReference(destinationFolder);
 		ExchangeService exchangeService = getConnection(reference);
 		boolean invalidateConnectionOnRelease = false;
@@ -653,7 +659,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 	}
 
 	@Override
-	public ExchangeMessageReference copyFile(ExchangeMessageReference f, String destinationFolder, boolean createFolder, boolean resultantMustBeReturned) throws FileSystemException {
+	public ExchangeMessageReference copyFile(ExchangeMessageReference f, String destinationFolder, boolean createFolder) throws FileSystemException {
 		ExchangeObjectReference reference = asObjectReference(destinationFolder);
 		ExchangeService exchangeService = getConnection(reference);
 		boolean invalidateConnectionOnRelease = false;
@@ -754,6 +760,7 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 
 
 	@Override
+	@Nullable
 	public Map<String, Object> getAdditionalFileProperties(ExchangeMessageReference f) throws FileSystemException {
 		final EmailMessage emailMessage = f.getMessage();
 		try {
@@ -763,12 +770,12 @@ public class ExchangeFileSystem extends MailFileSystemBase<ExchangeMessageRefere
 			}
 
 			final Map<String, Object> result = new LinkedHashMap<>();
-			result.put(TO_RECEPIENTS_KEY, asList(emailMessage.getToRecipients()));
-			result.put(CC_RECEPIENTS_KEY, asList(emailMessage.getCcRecipients()));
-			result.put(BCC_RECEPIENTS_KEY, asList(emailMessage.getBccRecipients()));
+			result.put(TO_RECIPIENTS_KEY, asList(emailMessage.getToRecipients()));
+			result.put(CC_RECIPIENTS_KEY, asList(emailMessage.getCcRecipients()));
+			result.put(BCC_RECIPIENTS_KEY, asList(emailMessage.getBccRecipients()));
 			result.put(FROM_ADDRESS_KEY, getFrom(emailMessage));
 			result.put(SENDER_ADDRESS_KEY, getSender(emailMessage));
-			result.put(REPLY_TO_RECEPIENTS_KEY, getReplyTo(emailMessage));
+			result.put(REPLY_TO_RECIPIENTS_KEY, getReplyTo(emailMessage));
 			result.put(DATETIME_SENT_KEY, getDateTimeSent(emailMessage));
 			result.put(DATETIME_RECEIVED_KEY, getDateTimeReceived(emailMessage));
 

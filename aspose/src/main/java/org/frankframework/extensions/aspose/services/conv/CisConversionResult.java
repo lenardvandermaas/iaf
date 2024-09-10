@@ -20,15 +20,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import javax.annotation.Nonnull;
-
-import org.springframework.http.MediaType;
-
+import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.Setter;
-
 import org.frankframework.extensions.aspose.ConversionOption;
 import org.frankframework.util.XmlBuilder;
+import org.springframework.http.MediaType;
+
 /**
  * @author
  * 	Gerard van der Hoorn
@@ -57,7 +55,7 @@ public class CisConversionResult {
 	private final List<CisConversionResult> attachments = new ArrayList<>();
 
 	/**
-	 * Converted document when succeeded (otherwise <code>null</code>) -
+	 * Converted document when succeeded (otherwise <code>null</code>)
 	 */
 	@Setter @Getter private File pdfResultFile;
 
@@ -107,7 +105,7 @@ public class CisConversionResult {
 		if (filename != null) {
 			msg.append(filename);
 		}
-		msg.append(" " + PASSWORD_MESSAGE);
+		msg.append(" ").append(PASSWORD_MESSAGE);
 		return createFailureResult(conversionOption, mediaTypeReceived, filename, msg.toString(), null);
 	}
 
@@ -125,17 +123,14 @@ public class CisConversionResult {
 	}
 
 	@Override
-	public final String toString() { //HIER
-		StringBuilder builder = new StringBuilder(super.toString());
-		builder.append(String.format("ConversionOption=[%s]", getConversionOption()));
-		builder.append(String.format("mediaType=[%s]", getMediaType()));
-		builder.append(String.format("documentName=[%s]", getDocumentName()));
-		builder.append("pdfResultFile=[%s]".formatted(getPdfResultFile() == null ? "null" : getPdfResultFile().getName()));
-		builder.append(String.format("sessionKey=[%s]", getResultSessionKey()));
-		builder.append(String.format("failureReason=[%s]", getFailureReason()));
-		builder.append("attachments=[%s]".formatted(getAttachments()));
-
-		return builder.toString();
+	public final String toString() {
+		return super.toString() + String.format("ConversionOption=[%s]", getConversionOption()) +
+				String.format("mediaType=[%s]", getMediaType()) +
+				String.format("documentName=[%s]", getDocumentName()) +
+				"pdfResultFile=[%s]".formatted(getPdfResultFile() == null ? "null" : getPdfResultFile().getName()) +
+				String.format("sessionKey=[%s]", getResultSessionKey()) +
+				String.format("failureReason=[%s]", getFailureReason()) +
+				"attachments=[%s]".formatted(getAttachments());
 	}
 
 	/**

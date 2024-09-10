@@ -1,5 +1,5 @@
 /*
-   Copyright 2022 - 2023 WeAreFrank!
+   Copyright 2022-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package org.frankframework.lifecycle.servlets;
 
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
@@ -41,8 +40,7 @@ public class InMemoryAuthenticator extends ServletAuthenticatorBase {
 
 	@Override
 	public SecurityFilterChain configure(HttpSecurity http) throws Exception {
-		http.httpBasic().realmName("Frank"); //BasicAuthenticationEntryPoint
-		http.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+		http.httpBasic(basic -> basic.realmName("Frank")); //BasicAuthenticationEntryPoint
 
 		UserDetails user = User.builder()
 				.username(username)

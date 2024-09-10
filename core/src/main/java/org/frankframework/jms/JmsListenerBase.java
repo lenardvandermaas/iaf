@@ -1,5 +1,5 @@
 /*
-   Copyright 2013, 2018 Nationale-Nederlanden, 2020-2023 WeAreFrank!
+   Copyright 2013, 2018 Nationale-Nederlanden, 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -23,14 +23,12 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Session;
-
-import org.apache.commons.lang3.StringUtils;
-
+import jakarta.annotation.Nonnull;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarnings;
 import org.frankframework.configuration.SuppressKeys;
@@ -46,7 +44,7 @@ import org.frankframework.core.PipeLineResult;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
 import org.frankframework.core.TimeoutException;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.receivers.RawMessageWrapper;
 import org.frankframework.soap.SoapWrapper;
@@ -59,7 +57,7 @@ import org.frankframework.util.DateFormatUtils;
  * @author  Gerrit van Brakel
  * @since   4.9
  */
-public abstract class JmsListenerBase extends JMSFacade implements HasSender, IWithParameters, IRedeliveringListener<javax.jms.Message> {
+public abstract class JmsListenerBase extends JMSFacade implements HasSender, IWithParameters, IRedeliveringListener<jakarta.jms.Message> {
 
 	private @Getter long timeout = 1000; // Same default value as Spring: https://docs.spring.io/spring/docs/3.2.x/javadoc-api/org/springframework/jms/listener/AbstractPollingMessageListenerContainer.html#setReceiveTimeout(long)
 	private @Getter boolean useReplyTo = true;
@@ -124,7 +122,7 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 				getSender().close();
 			}
 		} catch (Exception e) {
-			log.warn(getLogPrefix() + "caught exception stopping listener", e);
+			log.warn("{}caught exception stopping listener", getLogPrefix(), e);
 		}
 	}
 
@@ -134,9 +132,9 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	 * externally.
 	 *
 	 * @param rawMessage - Original message received, can not be <code>null</code>
-	 * @return A {@link Map} with the properties of the JMS {@link javax.jms.Message}.
+	 * @return A {@link Map} with the properties of the JMS {@link jakarta.jms.Message}.
 	 */
-	public Map<String, Object> extractMessageProperties(javax.jms.Message rawMessage) {
+	public Map<String, Object> extractMessageProperties(jakarta.jms.Message rawMessage) {
 		Map<String, Object> messageProperties = new HashMap<>();
 		String id = "unset";
 		String cid = "unset";
@@ -205,10 +203,11 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	 * other parameters from the message and put those in the context.
 	 *
 	 * @param rawMessage The {@link RawMessageWrapper} from which to extract the {@link Message}.
-	 * @param context Context to populate. Either a {@link PipeLineSession} or a {@link Map<String,Object>} threadContext depending on caller.
+	 * @param context Context to populate. Either a {@link PipeLineSession} or a {@link Map threadContext} depending on caller.
 	 * @return String  input {@link Message} for adapter.
 	 */
-	public Message extractMessage(@Nonnull RawMessageWrapper<javax.jms.Message> rawMessage, @Nonnull Map<String, Object> context) throws ListenerException {
+	@Override
+	public Message extractMessage(@Nonnull RawMessageWrapper<jakarta.jms.Message> rawMessage, @Nonnull Map<String, Object> context) throws ListenerException {
 		try {
 			return extractMessage(rawMessage.getRawMessage(), context, isSoap(), getSoapHeaderSessionKey(), soapWrapper);
 		} catch (Exception e) {
@@ -235,11 +234,12 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 		} catch (IOException e) {
 			throw new ListenerException("cannot convert message", e);
 		}
-		if (log.isDebugEnabled()) log.debug("wrapped message [" + replyMessage + "]");
+		if (log.isDebugEnabled()) log.debug("wrapped message [{}]", replyMessage);
 		return replyMessage;
 	}
 
-	public void afterMessageProcessed(PipeLineResult plr, RawMessageWrapper<javax.jms.Message> rawMessageWrapper, PipeLineSession session) throws ListenerException {
+	@Override
+	public void afterMessageProcessed(PipeLineResult plr, RawMessageWrapper<jakarta.jms.Message> rawMessageWrapper, PipeLineSession session) throws ListenerException {
 		String replyCid = null;
 
 		if (Boolean.FALSE.equals(forceMessageIdAsCorrelationId)) {
@@ -264,8 +264,8 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 				boolean ignoreInvalidDestinationException = false;
 				if (timeToLive == 0) {
 					//noinspection DataFlowIssue
-					if (rawMessageWrapper.getRawMessage() instanceof javax.jms.Message) {
-						javax.jms.Message messageReceived = rawMessageWrapper.getRawMessage();
+					if (rawMessageWrapper.getRawMessage() instanceof jakarta.jms.Message) {
+						jakarta.jms.Message messageReceived = rawMessageWrapper.getRawMessage();
 						long expiration = messageReceived.getJMSExpiration();
 						if (expiration != 0) {
 							timeToLive = expiration - new Date().getTime();
@@ -287,10 +287,10 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 				sendReply(plr, replyTo, replyCid, timeToLive, ignoreInvalidDestinationException, session, properties);
 			} else {
 				if (getSender() == null) {
-					log.info("[" + getName() + "] no replyTo address found or not configured to use replyTo, and no sender, not sending the result.");
+					log.info("[{}] no replyTo address found or not configured to use replyTo, and no sender, not sending the result.", getName());
 				} else {
 					if (log.isDebugEnabled()) {
-						log.debug("[" + getName() + "] no replyTo address found or not configured to use replyTo, sending message on nested sender with correlationID [" + replyCid + "] [" + plr.getResult() + "]");
+						log.debug("[{}] no replyTo address found or not configured to use replyTo, sending message on nested sender with correlationID [{}] [{}]", getName(), replyCid, plr.getResult());
 					}
 					try (PipeLineSession pipeLineSession = new PipeLineSession()) {
 						pipeLineSession.put(PipeLineSession.CORRELATION_ID_KEY, replyCid);
@@ -308,10 +308,10 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 				if (isJmsTransacted()) {
 					Session queueSession = (Session) session.get(IListenerConnector.THREAD_CONTEXT_SESSION_KEY); // session is/must be saved in threadcontext by JmsConnector
 					if (queueSession == null) {
-						log.error(getLogPrefix() + "session is null, cannot commit or roll back session");
+						log.error("{}session is null, cannot commit or roll back session", getLogPrefix());
 					} else {
 						if (plr.getState() != ExitState.SUCCESS) {
-							log.warn(getLogPrefix() + "got exit state [" + plr.getState() + "], rolling back session");
+							log.warn("{}got exit state [{}], rolling back session", getLogPrefix(), plr.getState());
 							queueSession.rollback();
 						} else {
 							queueSession.commit();
@@ -320,10 +320,10 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 				} else {
 					if (rawMessageWrapper.getRawMessage() != null && getAcknowledgeMode() == AcknowledgeMode.CLIENT_ACKNOWLEDGE) {
 						if (plr.getState() != ExitState.ERROR) { // SUCCESS and REJECTED will both be acknowledged
-							log.debug(getLogPrefix() + "acknowledging message");
+							log.debug("{}acknowledging message", getLogPrefix());
 							rawMessageWrapper.getRawMessage().acknowledge();
 						} else {
-							log.warn(getLogPrefix() + "got exit state [" + plr.getState() + "], skipping acknowledge");
+							log.warn("{}got exit state [{}], skipping acknowledge", getLogPrefix(), plr.getState());
 						}
 					}
 				}
@@ -334,7 +334,7 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	}
 
 	@Override
-	public boolean messageWillBeRedeliveredOnExitStateError(PipeLineSession pipeLineSession) {
+	public boolean messageWillBeRedeliveredOnExitStateError() {
 		return isTransacted() || isJmsTransacted() || getAcknowledgeMode() == AcknowledgeMode.CLIENT_ACKNOWLEDGE;
 	}
 
@@ -343,7 +343,7 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 		send(session, replyTo, replyCid, prepareReply(plr.getResult(), pipeLineSession), getReplyMessageType(), timeToLive, getReplyDeliveryMode().getDeliveryMode(), getReplyPriority(), ignoreInvalidDestinationException, properties);
 	}
 
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.9.0")
 	public void setSender(ISender newSender) {
 		sender = newSender;
 		ConfigurationWarnings.add(this, log, "["+getName()+"] has a nested Sender, which is deprecated. Please use attribute replyDestinationName or a Sender nested in Receiver instead", SuppressKeys.DEPRECATION_SUPPRESS_KEY, null);
@@ -366,7 +366,7 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList == null) {
 			paramList = new ParameterList();
 		}
@@ -389,11 +389,11 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	private Map<String, Object> evaluateParameters(Map<String, Object> threadContext) {
 		Map<String, Object> result = new HashMap<>();
 		if (threadContext != null && paramList != null) {
-			for (Parameter param : paramList) {
+			for (IParameter param : paramList) {
 				Object value = param.getValue();
 
 				if (StringUtils.isNotEmpty(param.getSessionKey())) {
-					log.debug("trying to resolve sessionKey[" + param.getSessionKey() + "]");
+					log.debug("trying to resolve sessionKey[{}]", param.getSessionKey());
 					Object resolvedValue = threadContext.get(param.getSessionKey());
 					if (resolvedValue != null) {
 						value = resolvedValue;
@@ -434,7 +434,7 @@ public abstract class JmsListenerBase extends JMSFacade implements HasSender, IW
 	}
 
 	/**
-	 * Name of the JMS destination (queue or topic) to use for sending replies. If <code>useReplyTo</code>=<code>true</code>,
+	 * Name of the JMS destination (queue or topic) to use for sending replies. If <code>useReplyTo=true</code>,
 	 * the sender specified reply destination takes precedence over this one.
 	 */
 	public void setReplyDestinationName(String destinationName) {

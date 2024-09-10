@@ -58,7 +58,7 @@ public class BatchFileTransformerPipe extends StreamTransformerPipe {
 		try {
 			filename = input.asString();
 		} catch (IOException e) {
-			log.error("Could not read message ["+input+"] as String", e);
+			log.error("Could not read message [{}] as String", input, e);
 		}
 		File file = new File(filename);
 		return file.getName();
@@ -110,7 +110,7 @@ public class BatchFileTransformerPipe extends StreamTransformerPipe {
 			try {
 				moveFileAfterProcessing(file, getMove2dirAfterError(), isDelete(), isOverwrite(), getNumberOfBackups());
 			} catch (Exception e2) {
-				log.error("Could not move file after exception ["+e2+"]");
+				log.error("Could not move file after exception [{}]", e2);
 			}
 			throw e;
 		}
@@ -157,7 +157,7 @@ public class BatchFileTransformerPipe extends StreamTransformerPipe {
 	}
 
 	/**
-	 * If set <code>true</code>, the file processed will deleted after being processed, and not stored
+	 * If set <code>true</code>, the file processed will be deleted after being processed, and not stored
 	 * @ff.default false
 	 */
 	public void setDelete(boolean b) {

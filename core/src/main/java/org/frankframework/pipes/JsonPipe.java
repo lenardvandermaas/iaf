@@ -1,5 +1,5 @@
 /*
-   Copyright 2013, 2019, 2020 Nationale-Nederlanden, 2020-2022 WeAreFrank!
+   Copyright 2013, 2019, 2020 Nationale-Nederlanden, 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -33,9 +33,9 @@ import org.frankframework.core.PipeRunException;
 import org.frankframework.core.PipeRunResult;
 import org.frankframework.doc.ElementType;
 import org.frankframework.doc.ElementType.ElementTypes;
+import org.frankframework.documentbuilder.DocumentUtils;
+import org.frankframework.documentbuilder.XmlDocumentBuilder;
 import org.frankframework.stream.Message;
-import org.frankframework.stream.document.DocumentUtils;
-import org.frankframework.stream.document.XmlDocumentBuilder;
 import org.frankframework.util.TransformerPool;
 
 /**
@@ -55,7 +55,7 @@ public class JsonPipe extends FixedForwardPipe {
 
 	public enum Direction {
 		JSON2XML,
-		XML2JSON;
+		XML2JSON
 	}
 
 	@Override
@@ -70,7 +70,7 @@ public class JsonPipe extends FixedForwardPipe {
 			addXmlRootElement = dir == Direction.JSON2XML;
 		}
 		if (dir == Direction.XML2JSON) {
-			tpXml2Json = TransformerPool.configureStyleSheetTransformer(this, "/xml/xsl/xml2json.xsl", 0);
+			tpXml2Json = TransformerPool.configureStyleSheetTransformer(this, "/xml/xsl/xml2json.xsl", 2); //shouldn't this be a utility transformer?
 		}
 	}
 
@@ -128,7 +128,7 @@ public class JsonPipe extends FixedForwardPipe {
 			case XML2JSON:
 				Map<String, Object> parameterValues = new HashMap<>(1);
 				parameterValues.put("includeRootElement", addXmlRootElement);
-				stringResult = tpXml2Json.transform(message, parameterValues);
+				stringResult = tpXml2Json.transform(message.asSource(), parameterValues);
 				break;
 			default:
 				throw new IllegalStateException("unknown direction ["+getDirection()+"]");
@@ -148,7 +148,7 @@ public class JsonPipe extends FixedForwardPipe {
 		direction = value;
 	}
 
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.8.0")
 	public void setVersion(String version) {
 		if("1".equals(version)) {
 			setAddXmlRootElement(true);

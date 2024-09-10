@@ -185,7 +185,7 @@ public class CmisHttpInvoker implements HttpInvoker, AutoCloseable {
 	private Response invoke(UrlBuilder url, HttpMethod method, String contentType, Map<String, String> headers,
 			Output writer, BindingSession session, BigInteger offset, BigInteger length) {
 
-		log.debug("Session "+session.getSessionId()+": "+method+" "+url);
+		log.debug("Session {}: {} {}", session.getSessionId(), method, url);
 
 		if(url.toString().equals(CmisSessionBuilder.OVERRIDE_WSDL_URL)) {
 			try {
@@ -280,7 +280,7 @@ public class CmisHttpInvoker implements HttpInvoker, AutoCloseable {
 
 			response = sender.invoke(method, url.toString(), headers, writer, session);
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.trace("exception creating or retrieving sender instance", e);
 			throw new CmisConnectionException(url.toString(), -1, e);
 		}
 

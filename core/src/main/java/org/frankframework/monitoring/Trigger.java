@@ -16,18 +16,18 @@
 package org.frankframework.monitoring;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 
-import org.apache.logging.log4j.Logger;
-
+import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.Adapter;
 import org.frankframework.monitoring.events.FireMonitorEvent;
@@ -59,7 +59,7 @@ public class Trigger implements ITrigger {
 	private @Getter int threshold = 0;
 	private @Getter int period = 0;
 
-	private LinkedList<Instant> eventDates = null;
+	private Queue<Instant> eventDates = null;
 	private boolean configured = false;
 
 	@Override
@@ -77,7 +77,7 @@ public class Trigger implements ITrigger {
 				throw new ConfigurationException("you must define a period when using threshold > 0");
 			}
 			if (eventDates == null) {
-				eventDates = new LinkedList<>();
+				eventDates = new ArrayDeque<>();
 			}
 		} else { // In case of a reconfigure
 			eventDates = null;
@@ -92,7 +92,7 @@ public class Trigger implements ITrigger {
 	}
 
 	@Override
-	public void onApplicationEvent(FireMonitorEvent event) {
+	public void onApplicationEvent(@Nonnull FireMonitorEvent event) {
 		if(configured && eventCodes.contains(event.getEventCode())) {
 			evaluateEvent(event);
 		}
@@ -137,10 +137,10 @@ public class Trigger implements ITrigger {
 
 	protected void cleanUpEvents(Instant now) {
 		while(!eventDates.isEmpty()) {
-			Instant firstDate = eventDates.getFirst();
-			if ((now.toEpochMilli() - firstDate.toEpochMilli()) > getPeriod() * 1000) {
-				eventDates.removeFirst();
-				if (log.isDebugEnabled()) log.debug("removed element dated ["+ DateFormatUtils.format(firstDate)+"]");
+			Instant firstDate = eventDates.peek();
+			if ((now.toEpochMilli() - firstDate.toEpochMilli()) > getPeriod() * 1000L) {
+				eventDates.poll();
+				if (log.isDebugEnabled()) log.debug("removed element dated [{}]", DateFormatUtils.format(firstDate));
 			} else {
 				break;
 			}
@@ -161,23 +161,22 @@ public class Trigger implements ITrigger {
 		if (getPeriod()>0) {
 			trigger.addAttribute("period",getPeriod());
 		}
-		for (int i=0; i<eventCodes.size(); i++) {
-			XmlBuilder event=new XmlBuilder("event");
+		for (String eventCode : eventCodes) {
+			XmlBuilder event = new XmlBuilder("event");
 			trigger.addSubElement(event);
-			event.setValue(eventCodes.get(i));
+			event.setValue(eventCode);
 		}
 		if (getAdapterFilters()!=null && getSourceFiltering() != SourceFiltering.NONE) {
-			for (Iterator<String> it=getAdapterFilters().keySet().iterator(); it.hasNext(); ) {
-				String adapterName = it.next();
+			for (String adapterName : getAdapterFilters().keySet()) {
 				AdapterFilter af = getAdapterFilters().get(adapterName);
 				XmlBuilder adapter = new XmlBuilder("adapterfilter");
 				trigger.addSubElement(adapter);
-				adapter.addAttribute("adapter",adapterName);
+				adapter.addAttribute("adapter", adapterName);
 				if (isFilterOnLowerLevelObjects()) {
-					List<String> subobjectList=af.getSubObjectList();
-					if (subobjectList!=null) {
-						for(String subObjectName : subobjectList) {
-							XmlBuilder sourceXml=new XmlBuilder("source");
+					List<String> subobjectList = af.getSubObjectList();
+					if (subobjectList != null) {
+						for (String subObjectName : subobjectList) {
+							XmlBuilder sourceXml = new XmlBuilder("source");
 							adapter.addSubElement(sourceXml);
 							sourceXml.setValue(subObjectName);
 						}
@@ -260,7 +259,7 @@ public class Trigger implements ITrigger {
 
 	@Override
 	public void destroy() throws Exception {
-		log.info("removing trigger ["+this+"]");
+		log.info("removing trigger [{}]", this);
 	}
 
 }

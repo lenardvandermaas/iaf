@@ -36,21 +36,22 @@ import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.PipeRunResult;
 import org.frankframework.core.RequestReplyExecutor;
 import org.frankframework.core.SenderResult;
+import org.frankframework.documentbuilder.xml.XmlTee;
 import org.frankframework.management.bus.DebuggerStatusChangedEvent;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.Parameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.parameters.ParameterValueList;
 import org.frankframework.processors.CacheSenderWrapperProcessor;
-import org.frankframework.processors.LimitingParallelExecutionPipeProcessor;
 import org.frankframework.processors.CorePipeLineProcessor;
 import org.frankframework.processors.InputOutputPipeProcessor;
+import org.frankframework.processors.LimitingParallelExecutionPipeProcessor;
 import org.frankframework.scheduler.job.SendMessageJob.SendMessageJobSender;
 import org.frankframework.senders.ParallelSenderExecutor;
 import org.frankframework.senders.SenderWrapperBase;
 import org.frankframework.stream.Message;
-import org.frankframework.stream.ThreadConnector;
-import org.frankframework.stream.ThreadLifeCycleEventListener;
-import org.frankframework.stream.xml.XmlTee;
+import org.frankframework.threading.ThreadConnector;
+import org.frankframework.threading.ThreadLifeCycleEventListener;
 import org.frankframework.util.AppConstants;
 import org.frankframework.util.StreamCaptureUtils;
 import org.frankframework.xml.IXmlDebugger;
@@ -101,13 +102,13 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 			return (PipeLineResult)proceedingJoinPoint.proceed();
 		}
 		String correlationId = getCorrelationId(session);
-		message = ibisDebugger.pipeLineInput(pipeLine, correlationId, message);
+		message = ibisDebugger.pipelineInput(pipeLine, correlationId, message);
 		TreeSet<String> keys = new TreeSet<>(session.keySet());
 		Iterator<String> iterator = keys.iterator();
 		while (iterator.hasNext()) {
 			String sessionKey = iterator.next();
 			Object sessionValue = session.get(sessionKey);
-			sessionValue = ibisDebugger.pipeLineSessionKey(correlationId, sessionKey, sessionValue);
+			sessionValue = ibisDebugger.pipelineSessionKey(correlationId, sessionKey, sessionValue);
 			session.put(sessionKey, sessionValue);
 		}
 		PipeLineResult pipeLineResult = null;
@@ -117,22 +118,23 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 			args[3] = pipeLineSessionDebugger;
 			pipeLineResult = (PipeLineResult)proceedingJoinPoint.proceed(args);
 		} catch(Throwable throwable) {
-			throw ibisDebugger.pipeLineAbort(pipeLine, correlationId, throwable);
+			throw ibisDebugger.pipelineAbort(pipeLine, correlationId, throwable);
 		}
-		ibisDebugger.showValue(correlationId, "exitState", pipeLineResult.getState().name());
+		ibisDebugger.showOutputValue(correlationId, "exitState", pipeLineResult.getState().name());
 		if (pipeLineResult.getExitCode()!=0) {
-			ibisDebugger.showValue(correlationId, "exitCode", Integer.toString(pipeLineResult.getExitCode()));
+			ibisDebugger.showOutputValue(correlationId, "exitCode", Integer.toString(pipeLineResult.getExitCode()));
 		}
+
 		if (!pipeLineResult.isSuccessful()) {
-			ibisDebugger.showValue(correlationId, "result", pipeLineResult.getResult());
-			ibisDebugger.pipeLineAbort(pipeLine, correlationId, null);
+			ibisDebugger.pipelineAbort(pipeLine, correlationId, pipeLineResult.getResult());
 		} else {
-			Message result = ibisDebugger.pipeLineOutput(pipeLine, correlationId, pipeLineResult.getResult());
+			Message result = ibisDebugger.pipelineOutput(pipeLine, correlationId, pipeLineResult.getResult());
 			if(Message.isNull(result)) {
 				log.error("debugger returned NULL, pipeline result was: [{}]", pipeLineResult.getResult());
 			}
 			pipeLineResult.setResult(result);
 		}
+
 		return pipeLineResult;
 	}
 
@@ -188,7 +190,7 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		PipeRunResult pipeRunResult = null;
 
 		if(StringUtils.isNotEmpty(messageRoot)) {
-			ibisDebugger.showValue(correlationId, "MessageRoot to be asserted", messageRoot);
+			ibisDebugger.showInputValue(correlationId, "MessageRoot to be asserted", messageRoot);
 		}
 
 		try {
@@ -247,12 +249,12 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 			senderResult = new SenderResult(true, Message.nullMessage(), null, "stub");
 		}
 
-		ibisDebugger.showValue(correlationId, "success", senderResult.isSuccess());
+		ibisDebugger.showOutputValue(correlationId, "success", senderResult.isSuccess());
 		if (senderResult.getForwardName()!=null) {
-			ibisDebugger.showValue(correlationId, "forwardName", senderResult.getForwardName());
+			ibisDebugger.showOutputValue(correlationId, "forwardName", senderResult.getForwardName());
 		}
 		if (StringUtils.isNotEmpty(senderResult.getErrorMessage())) {
-			ibisDebugger.showValue(correlationId, "errorMessage", senderResult.getErrorMessage());
+			ibisDebugger.showOutputValue(correlationId, "errorMessage", senderResult.getErrorMessage());
 		}
 
 		Message capturedResult = ibisDebugger.senderOutput(sender, correlationId, senderResult.getResult());
@@ -293,7 +295,7 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 			return contentHandler;
 		}
 		String correlationId = getCorrelationId(session);
-		WriterPlaceHolder writerPlaceHolder = ibisDebugger.showValue(correlationId, label, new WriterPlaceHolder());
+		WriterPlaceHolder writerPlaceHolder = ibisDebugger.showInputValue(correlationId, label, new WriterPlaceHolder());
 		if (writerPlaceHolder!=null && writerPlaceHolder.getWriter()!=null) {
 			Writer writer = writerPlaceHolder.getWriter();
 			session.scheduleCloseOnSessionExit(writer, REQUESTER);
@@ -367,7 +369,9 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		threadInfo.threadId = Integer.toString(threadCounter.incrementAndGet());
 		if (log.isDebugEnabled()) {
 			String nameClause=threadInfo.owner instanceof INamedObject ino?" name ["+ino.getName()+"]":"";
-			log.debug("announceChildThread thread id ["+Thread.currentThread().getId()+"] thread name ["+Thread.currentThread().getName()+"] owner ["+threadInfo.owner.getClass().getSimpleName()+"]"+nameClause+" threadId ["+threadInfo.threadId+"] correlationId ["+threadInfo.correlationId+"]");
+			log.debug("announceChildThread thread id [{}] thread name [{}] owner [{}]{} threadId [{}] correlationId [{}]", Thread.currentThread()
+					.getId(), Thread.currentThread().getName(), threadInfo.owner.getClass()
+					.getSimpleName(), nameClause, threadInfo.threadId, threadInfo.correlationId);
 		}
 		ibisDebugger.createThread(threadInfo.owner, threadInfo.threadId, threadInfo.correlationId);
 		return threadInfo;
@@ -380,7 +384,9 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		}
 		if (log.isDebugEnabled()) {
 			String nameClause=threadInfo.owner instanceof INamedObject ino?" name ["+ino.getName()+"]":"";
-			log.debug("cancelChildThread thread id ["+Thread.currentThread().getId()+"] thread name ["+Thread.currentThread().getName()+"] owner ["+threadInfo.owner.getClass().getSimpleName()+"]"+nameClause+" threadId ["+threadInfo.threadId+"] correlationId ["+threadInfo.correlationId+"]");
+			log.debug("cancelChildThread thread id [{}] thread name [{}] owner [{}]{} threadId [{}] correlationId [{}]", Thread.currentThread()
+					.getId(), Thread.currentThread().getName(), threadInfo.owner.getClass()
+					.getSimpleName(), nameClause, threadInfo.threadId, threadInfo.correlationId);
 		}
 		ibisDebugger.cancelThread(threadInfo.owner, threadInfo.threadId, threadInfo.correlationId);
 	}
@@ -392,7 +398,8 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		}
 		if (log.isDebugEnabled()) {
 			String nameClause=ref.owner instanceof INamedObject ino?" name ["+ino.getName()+"]":"";
-			log.debug("threadCreated thread id ["+Thread.currentThread().getId()+"] thread name ["+Thread.currentThread().getName()+"] owner ["+ref.owner.getClass().getSimpleName()+"]"+nameClause+" threadId ["+ref.threadId+"] correlationId ["+ref.correlationId+"]");
+			log.debug("threadCreated thread id [{}] thread name [{}] owner [{}]{} threadId [{}] correlationId [{}]", Thread.currentThread()
+					.getId(), Thread.currentThread().getName(), ref.owner.getClass().getSimpleName(), nameClause, ref.threadId, ref.correlationId);
 		}
 		return (R)ibisDebugger.startThread(ref.owner, ref.threadId, ref.correlationId, request);
 	}
@@ -404,7 +411,8 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		}
 		if (log.isDebugEnabled()) {
 			String nameClause=ref.owner instanceof INamedObject ino?" name ["+ino.getName()+"]":"";
-			log.debug("threadEnded thread id ["+Thread.currentThread().getId()+"] thread name ["+Thread.currentThread().getName()+"] owner ["+ref.owner.getClass().getSimpleName()+"]"+nameClause+" threadId ["+ref.threadId+"] correlationId ["+ref.correlationId+"]");
+			log.debug("threadEnded thread id [{}] thread name [{}] owner [{}]{} threadId [{}] correlationId [{}]", Thread.currentThread()
+					.getId(), Thread.currentThread().getName(), ref.owner.getClass().getSimpleName(), nameClause, ref.threadId, ref.correlationId);
 		}
 		return (R)ibisDebugger.endThread(ref.owner, ref.correlationId, result);
 	}
@@ -416,7 +424,8 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 		}
 		if (log.isDebugEnabled()) {
 			String nameClause=ref.owner instanceof INamedObject ino?" name ["+ino.getName()+"]":"";
-			log.debug("threadAborted thread id ["+Thread.currentThread().getId()+"] thread name ["+Thread.currentThread().getName()+"] owner ["+ref.owner.getClass().getSimpleName()+"]"+nameClause+" threadId ["+ref.threadId+"] correlationId ["+ref.correlationId+"]");
+			log.debug("threadAborted thread id [{}] thread name [{}] owner [{}]{} threadId [{}] correlationId [{}]", Thread.currentThread()
+					.getId(), Thread.currentThread().getName(), ref.owner.getClass().getSimpleName(), nameClause, ref.threadId, ref.correlationId);
 		}
 		return ibisDebugger.abortThread(ref.owner, ref.correlationId, t);
 	}
@@ -429,7 +438,7 @@ public class IbisDebuggerAdvice implements InitializingBean, ThreadLifeCycleEven
 			return proceedingJoinPoint.proceed();
 		}
 		Object result = proceedingJoinPoint.proceed();
-		Parameter parameter = (Parameter)proceedingJoinPoint.getTarget();
+		IParameter parameter = (IParameter)proceedingJoinPoint.getTarget();
 		return ibisDebugger.parameterResolvedTo(parameter, getCorrelationId(session), result); // session is null in afterMessageProcessed()
 	}
 

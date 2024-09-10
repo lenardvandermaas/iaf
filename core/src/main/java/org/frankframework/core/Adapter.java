@@ -19,11 +19,12 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import io.micrometer.core.instrument.DistributionSummary;
+import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -40,9 +41,9 @@ import org.frankframework.doc.Category;
 import org.frankframework.errormessageformatters.ErrorMessageFormatter;
 import org.frankframework.jmx.JmxAttribute;
 import org.frankframework.logging.IbisMaskingLayout;
-import org.frankframework.pipes.AbstractPipe;
 import org.frankframework.receivers.Receiver;
 import org.frankframework.statistics.FrankMeterType;
+import org.frankframework.statistics.HasStatistics;
 import org.frankframework.statistics.MetricsInitializer;
 import org.frankframework.stream.Message;
 import org.frankframework.util.AppConstants;
@@ -60,6 +61,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.task.TaskExecutor;
 
 /**
+ * The Adapter is the central manager in the framework. It has knowledge of both
+ * {@link Receiver}s as well as the {@link PipeLine} and statistics.
+ * The Adapter is the class that is responsible for configuring, initializing and
+ * accessing/activating Receivers, Pipelines, statistics etc.
+ * <br/>
  * An Adapter receives a specific type of messages and processes them. It has {@link Receiver Receivers}
  * that receive the messages and a {@link PipeLine} that transforms the incoming messages. Each adapter is part of a {@link Configuration}.
  * <br/>
@@ -80,7 +86,7 @@ import org.springframework.core.task.TaskExecutor;
  * @author Johan Verrips
  */
 @Category("Basic")
-public class Adapter implements IAdapter, NamedBean {
+public class Adapter implements IManagable, HasStatistics, NamedBean {
 	private @Getter @Setter ApplicationContext applicationContext;
 
 	private final Logger log = LogUtil.getLogger(this);
@@ -90,15 +96,15 @@ public class Adapter implements IAdapter, NamedBean {
 	public static final String PROCESS_STATE_ERROR = "ERROR";
 
 	private final @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
-	private final AppConstants APP_CONSTANTS = AppConstants.getInstance(configurationClassLoader);
+	private final AppConstants appConstants = AppConstants.getInstance(configurationClassLoader);
 
 	private String name;
 	private @Getter String description;
-	private @Getter boolean autoStart = APP_CONSTANTS.getBoolean("adapters.autoStart", true);
+	private @Getter boolean autoStart = appConstants.getBoolean("adapters.autoStart", true);
 	private @Getter boolean replaceNullMessage = false;
 	private @Getter int messageKeeperSize = 10; //default length of MessageKeeper
-	private Level msgLogLevel = Level.toLevel(APP_CONSTANTS.getProperty("msg.log.level.default", "INFO"));
-	private @Getter boolean msgLogHidden = APP_CONSTANTS.getBoolean("msg.log.hidden.default", true);
+	private Level msgLogLevel = Level.toLevel(appConstants.getProperty("msg.log.level.default", "INFO"));
+	private @Getter boolean msgLogHidden = appConstants.getBoolean("msg.log.hidden.default", true);
 	private @Setter @Getter String targetDesignDocument;
 
 	private @Getter Configuration configuration;
@@ -120,7 +126,7 @@ public class Adapter implements IAdapter, NamedBean {
 	private final long[] numOfMessagesStartProcessingByHour = new long[24];
 
 	private DistributionSummary statsMessageProcessingDuration = null;
-	private Object statisticsLock = new Object();
+	private final Object statisticsLock = new Object();
 
 	private long statsUpSince = System.currentTimeMillis();
 	private IErrorMessageFormatter errorMessageFormatter;
@@ -128,11 +134,12 @@ public class Adapter implements IAdapter, NamedBean {
 	private final RunStateManager runState = new RunStateManager();
 	private @Getter boolean configurationSucceeded = false;
 	private MessageKeeper messageKeeper; //instantiated in configure()
-	private final boolean msgLogHumanReadable = APP_CONSTANTS.getBoolean("msg.log.humanReadable", false);
+	private final boolean msgLogHumanReadable = appConstants.getBoolean("msg.log.humanReadable", false);
 
 	private @Getter @Setter TaskExecutor taskExecutor;
 
-	private String composedHideRegex;
+	private @Getter String composedHideRegex;
+	private @Getter Pattern composedHideRegexPattern;
 
 	private static class SenderLastExitState {
 		private final String lastExitState;
@@ -149,6 +156,14 @@ public class Adapter implements IAdapter, NamedBean {
 		return this;
 	}
 
+	/**
+	 * Instruct the adapter to configure itself. The adapter will call the pipeline
+	 * to configure itself, the pipeline will call the individual pipes to configure
+	 * themselves.
+	 *
+	 * @see org.frankframework.pipes.AbstractPipe#configure()
+	 * @see PipeLine#configure()
+	 */
 	/*
 	 * This function is called by Configuration.registerAdapter,
 	 * to make configuration information available to the Adapter. <br/><br/>
@@ -157,6 +172,7 @@ public class Adapter implements IAdapter, NamedBean {
 	 * @see org.frankframework.core.Pipeline#configurePipes
 	 */
 	@Override
+	@SuppressWarnings("java:S4792") // Changing the logger level is not a security-sensitive operation, because roles originate from the properties file
 	public void configure() throws ConfigurationException { //TODO check if we should fail when the adapter has already been configured?
 		msgLog = LogUtil.getMsgLogger(this);
 		Configurator.setLevel(msgLog.getName(), msgLogLevel);
@@ -194,34 +210,29 @@ public class Adapter implements IAdapter, NamedBean {
 			configureReceiver(receiver);
 		}
 
-		List<String> hrs = new ArrayList<>();
-		for (IPipe pipe : pipeline.getPipes()) {
-			if (pipe instanceof AbstractPipe aPipe) {
-				if (StringUtils.isNotEmpty(aPipe.getHideRegex())) {
-					if (!hrs.contains(aPipe.getHideRegex())) {
-						hrs.add(aPipe.getHideRegex());
-					}
-				}
-			}
+		composedHideRegex = computeCombinedHideRegex();
+		if (StringUtils.isNotEmpty(composedHideRegex)) {
+			composedHideRegexPattern = Pattern.compile(composedHideRegex);
 		}
-		StringBuilder sb = new StringBuilder();
-		for (String hr : hrs) {
-			if (!sb.isEmpty()) {
-				sb.append("|");
-			}
-			sb.append("(");
-			sb.append(hr);
-			sb.append(")");
-		}
-		if (!sb.isEmpty()) {
-			composedHideRegex = sb.toString();
-		}
-
 		if(runState.getRunState()==RunState.ERROR) { // if the adapter was previously in state ERROR, after a successful configure, reset it's state
 			runState.setRunState(RunState.STOPPED);
 		}
 
 		configurationSucceeded = true; //Only if there are no errors mark the adapter as `configurationSucceeded`!
+	}
+
+	@Nonnull
+	String computeCombinedHideRegex() {
+		String combinedHideRegex = pipeline.getPipes().stream()
+				.map(IPipe::getHideRegex)
+				.filter(StringUtils::isNotEmpty)
+				.distinct()
+				.collect(Collectors.joining(")|(", "(", ")"));
+
+		if ("()".equals(combinedHideRegex)) {
+			return "";
+		}
+		return combinedHideRegex;
 	}
 
 	public void configureReceiver(Receiver<?> receiver) throws ConfigurationException {
@@ -353,7 +364,6 @@ public class Adapter implements IAdapter, NamedBean {
 		}
 	}
 
-	@Override
 	public Message formatErrorMessage(String errorMessage, Throwable t, Message originalMessage, String messageID, INamedObject objectInError, long receivedTime) {
 		if (errorMessageFormatter == null) {
 			errorMessageFormatter = new ErrorMessageFormatter();
@@ -393,7 +403,6 @@ public class Adapter implements IAdapter, NamedBean {
 	 * messages available, for instance for displaying it in the webcontrol
 	 * @see MessageKeeper
 	 */
-	@Override
 	public synchronized MessageKeeper getMessageKeeper() {
 		if (messageKeeper == null)
 			messageKeeper = new MessageKeeper(getMessageKeeperSize() < 1 ? 1 : getMessageKeeperSize());
@@ -452,7 +461,6 @@ public class Adapter implements IAdapter, NamedBean {
 		}
 	}
 
-	@Override
 	public Receiver<?> getReceiverByName(String receiverName) {
 		for (Receiver<?> receiver: receivers) {
 			if (receiver.getName().equalsIgnoreCase(receiverName)) {
@@ -462,7 +470,6 @@ public class Adapter implements IAdapter, NamedBean {
 		return null;
 	}
 
-	@Override
 	public Iterable<Receiver<?>> getReceivers() {
 		return receivers;
 	}
@@ -502,11 +509,24 @@ public class Adapter implements IAdapter, NamedBean {
 		}
 	}
 
-	@Override
-	public PipeLineResult processMessage(String messageId, Message message, PipeLineSession pipeLineSession) {
+	/**
+	 * Direct call to the Adapter PipeLine, foregoing any listeners and receivers. This method
+	 * does an amount of setup which is otherwise done by the {@link Receiver}.
+	 * <br/>
+	 * This method does not throw any exceptions, and will always return a {@link PipeLineResult}. If an
+	 * error occurred, the error information is in the {@code PipeLineResult}.
+	 *
+	 * @param messageId ID of the message
+	 * @param message {@link Message} to be processed
+	 * @param pipeLineSession {@link PipeLineSession} session in which message is to be processed
+	 * @return The {@link PipeLineResult} from processing the message, or indicating what error occurred.
+	 */
+	public PipeLineResult processMessageDirect(String messageId, Message message, PipeLineSession pipeLineSession) {
 		long startTime = System.currentTimeMillis();
 		try {
-			try (final CloseableThreadContext.Instance ignored = LogUtil.getThreadContext(this, messageId, pipeLineSession)) {
+			try (final CloseableThreadContext.Instance ignored = LogUtil.getThreadContext(this, messageId, pipeLineSession);
+				 IbisMaskingLayout.HideRegexContext ignored2 = IbisMaskingLayout.pushToThreadLocalReplace(composedHideRegexPattern)
+			) {
 				PipeLineResult result = new PipeLineResult();
 				boolean success = false;
 				try {
@@ -539,7 +559,23 @@ public class Adapter implements IAdapter, NamedBean {
 		}
 	}
 
-	@Override
+	/**
+	 * This method does the real processing of messages by the adapter. This method is to
+	 * be called either from the {@link Receiver}, or from {@link #processMessageDirect(String, Message, PipeLineSession)}.
+	 * <br/>
+	 * <em>NB: This method expects most setup to already have been done by the caller! LoggingContext and masking of sensitive information
+	 * is among things that should be set up by the caller.</em>
+	 * <br/>
+	 * This method will return a {@link PipeLineResult} with results of the processing. This
+	 * might indicate an error if the message could not be processed successfully. If there
+	 * was an exception from the {@link PipeLine}, a {@link ListenerException} might be thrown.
+	 *
+	 * @param messageId ID of the message
+	 * @param message {@link Message} to be processed
+	 * @param pipeLineSession {@link PipeLineSession} in which the message is to be processed
+	 * @return {@link PipeLineResult} with result from processing the message in the {@link PipeLine}.
+	 * @throws ListenerException If there was an exception, throws a {@link ListenerException}.
+	 */
 	public PipeLineResult processMessageWithExceptions(String messageId, Message message, PipeLineSession pipeLineSession) throws ListenerException {
 		boolean processingSuccess = true;
 		// prevent executing a stopped adapter
@@ -555,19 +591,17 @@ public class Adapter implements IAdapter, NamedBean {
 
 		PipeLineResult result = null;
 		try {
-			if (StringUtils.isNotEmpty(composedHideRegex)) {
-				IbisMaskingLayout.addToThreadLocalReplace(composedHideRegex);
-			}
-
 			String additionalLogging = getAdditionalLogging(pipeLineSession);
-			if(msgLog.isDebugEnabled()) {
-				logToMessageLogWithMessageContentsOrSize(Level.DEBUG, "Pipeline started"+additionalLogging, "request", message);
+			if (msgLog.isDebugEnabled()) {
+				logToMessageLogWithMessageContentsOrSize(Level.DEBUG, "Pipeline started" + additionalLogging, "request", message);
 			}
 			log.info("Adapter [{}] received message with messageId [{}]{}", getName(), messageId, additionalLogging);
 
 			if (Message.isEmpty(message) && isReplaceNullMessage()) {
 				log.debug("Adapter [{}] replaces null message with messageId [{}] by empty message", name, messageId);
+				//noinspection resource
 				message = new Message("");
+				message.closeOnCloseOf(pipeLineSession, "Empty Message from Adapter");
 			}
 			result = pipeline.process(messageId, message, pipeLineSession);
 			return result;
@@ -592,7 +626,7 @@ public class Adapter implements IAdapter, NamedBean {
 			//reset the InProcess fields, and increase processedMessagesCount
 			decNumOfMessagesInProcess(duration, processingSuccess);
 			ThreadContext.put(LogUtil.MDC_EXIT_STATE_KEY, result.getState().name());
-			if (result.getExitCode()!=0) {
+			if (result.getExitCode() != 0) {
 				ThreadContext.put(LogUtil.MDC_EXIT_CODE_KEY, Integer.toString(result.getExitCode()));
 			}
 			ThreadContext.put("pipeline.duration", msgLogHumanReadable ? Misc.getAge(startTime) : Long.toString(duration));
@@ -601,12 +635,11 @@ public class Adapter implements IAdapter, NamedBean {
 						getName(), messageId, result.getState(),
 						DateFormatUtils.format(startTime, DateFormatUtils.FULL_GENERIC_FORMATTER),
 						DateFormatUtils.format(endTime, DateFormatUtils.FULL_GENERIC_FORMATTER),
-						duration);
+						duration
+				);
 			} else {
 				log.info("Adapter [{}] Pipeline finished processing message with messageId [{}] with exit-state [{}]", getName(), messageId, result.getState());
 			}
-
-			IbisMaskingLayout.removeThreadLocalReplace();
 		}
 	}
 
@@ -646,19 +679,16 @@ public class Adapter implements IAdapter, NamedBean {
 	 *
 	 * @ff.mandatory
 	 */
-	@Override
 	public void setPipeLine(PipeLine pipeline) {
 		this.pipeline = pipeline;
 		pipeline.setAdapter(this);
 		log.debug("Adapter [{}] registered pipeline [{}]", name, pipeline);
 	}
 
-	@Override
 	public PipeLine getPipeLine() {
 		return pipeline;
 	}
 
-	@Override
 	public void setConfiguration(Configuration configuration) {
 		this.configuration = configuration;
 	}
@@ -674,11 +704,11 @@ public class Adapter implements IAdapter, NamedBean {
 	@Override
 	public void startRunning() {
 		switch(getRunState()) {
-			case STARTING:
-			case EXCEPTION_STARTING:
-			case STARTED:
-			case STOPPING:
-			case EXCEPTION_STOPPING:
+			case STARTING,
+				 EXCEPTION_STARTING,
+				 STARTED,
+				 STOPPING,
+				 EXCEPTION_STOPPING:
 				log.warn("cannot start adapter [{}] that is stopping, starting or already started", name);
 				return;
 			default:
@@ -768,9 +798,11 @@ public class Adapter implements IAdapter, NamedBean {
 	 */
 	@Override
 	public void stopRunning() {
+		log.info("Stopping Adapter named [{}] with {} receivers", this::getName, receivers::size);
 		Runnable runnable = new Runnable() {
 			@Override
 			public void run() {
+				log.debug("Adapter.stopRunning - stop adapter thread for [{}] starting", () -> getName());
 				Thread.currentThread().setName("stopping Adapter " +getName());
 				try {
 					// See also Receiver.stopRunning()
@@ -787,6 +819,7 @@ public class Adapter implements IAdapter, NamedBean {
 					log.debug("Adapter [{}] is stopping receivers", name);
 					for (Receiver<?> receiver: receivers) {
 						// Will not stop receivers that are in state "STARTING"
+						log.debug("Adapter.stopRunning: Stopping receiver [{}] in state [{}]", receiver::getName, receiver::getRunState);
 						receiver.stopRunning();
 					}
 					// IPullingListeners might still be running, see also
@@ -795,17 +828,19 @@ public class Adapter implements IAdapter, NamedBean {
 						if(receiver.getRunState() == RunState.ERROR) {
 							continue; // We don't need to stop the receiver as it's already stopped...
 						}
-						while (!receiver.isStopped()) {
+						long sleepDelay = 25L;
+						while (!receiver.getRunState().isStopped()) {
 							if (receiver.getRunState() == RunState.STARTED || receiver.getRunState() == RunState.EXCEPTION_STARTING) {
-								log.debug("Adapter [{}] stopping receiver [{}] which was still starting when stop() command was received", name, receiver.getName());
+								log.debug("Adapter [{}] stopping receiver [{}] which was still starting when stop() command was received", ()->name, receiver::getName);
 								receiver.stopRunning();
 							}
-							// Passing receiver.getRunState() as supplier could cause recursive log invocation so should be avoided
-							if (log.isDebugEnabled()) log.debug("Adapter [{}] waiting for receiver [{}] in state [{}] to stop", name, receiver.getName(), receiver.getRunState());
+							log.debug("Adapter [{}] waiting for receiver [{}] in state [{}] to stop", ()->name, receiver::getName, receiver::getRunState);
 							try {
-								Thread.sleep(1000);
+								Thread.sleep(sleepDelay);
+								if (sleepDelay < 1000L) sleepDelay = sleepDelay * 2L;
 							} catch (InterruptedException e) {
 								if (log.isWarnEnabled()) log.warn("Interrupted waiting for threads of receiver [{}] to end", receiver.getName(), e);
+								Thread.currentThread().interrupt();
 							}
 						}
 						log.info("Adapter [{}] stopped receiver [{}] {}.", name, receiver.getName(), receiver.isInRunState(RunState.EXCEPTION_STOPPING) ? "with error" : "successfully");
@@ -829,6 +864,7 @@ public class Adapter implements IAdapter, NamedBean {
 					log.warn("Adapter [{}] in state ERROR", name, t);
 				} finally {
 					configuration.removeStopAdapterThread(this);
+					log.debug("Adapter.stopRunning - stop adapter thread for Adapter [{}] finished and completed", name);
 				}
 			}
 
@@ -954,7 +990,7 @@ public class Adapter implements IAdapter, NamedBean {
 
 	/**
 	 * Defines behaviour for logging messages. Configuration is done in the MSG appender in log4j4ibis.properties.
-	 * @ff.default <code>INFO, unless overridden by property msg.log.level.default</code>
+	 * @ff.default <code>INFO</code>, unless overridden by property <code>msg.log.level.default</code>
 	 */
 	public void setMsgLogLevel(MessageLogLevel level) {
 		msgLogLevel = level.getEffectiveLevel();

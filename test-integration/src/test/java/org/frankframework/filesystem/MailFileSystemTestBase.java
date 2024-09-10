@@ -1,11 +1,14 @@
 package org.frankframework.filesystem;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.Test;
+
+import lombok.extern.log4j.Log4j2;
 import org.frankframework.stream.Message;
 import org.frankframework.testutil.MatchUtils;
 import org.frankframework.testutil.PropertyUtil;
@@ -26,6 +29,7 @@ import org.frankframework.xml.SaxElementBuilder;
  *
  * creates a number of fs_test... folders
  */
+@Log4j2
 public abstract class MailFileSystemTestBase<M,A,FS extends IMailFileSystem<M, A>> extends SelfContainedBasicFileSystemTest<M, FS>{
 
 	protected String PROPERTY_FILE = "ExchangeMail.properties";
@@ -105,7 +109,7 @@ public abstract class MailFileSystemTestBase<M,A,FS extends IMailFileSystem<M, A
 	public void testToAddress() throws Exception {
 		M emailMessage = getFirstFileFromFolder(null);
 		Map<String,Object> properties = fileSystem.getAdditionalFileProperties(emailMessage);
-		List<String> adresses = (List<String>)properties.get(IMailFileSystem.TO_RECEPIENTS_KEY);
+		List<String> adresses = (List<String>)properties.get(IMailFileSystem.TO_RECIPIENTS_KEY);
 		String address = adresses.get(0);
 		String expected = "frankframework/frankframework <iaf@noreply.github.com>";
 		assertEquals(expected, address);

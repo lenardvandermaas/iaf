@@ -1,5 +1,5 @@
 /*
-   Copyright 2020-2022 WeAreFrank!
+   Copyright 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -32,11 +32,9 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.annotation.Nonnull;
 import javax.imageio.ImageIO;
 
 import org.apache.commons.io.FileUtils;
@@ -52,30 +50,33 @@ import org.frankframework.testutil.MatchUtils;
 import org.frankframework.testutil.MessageTestUtils;
 import org.frankframework.testutil.MessageTestUtils.MessageType;
 import org.frankframework.testutil.TestFileUtils;
-import org.frankframework.util.LogUtil;
 import org.frankframework.util.MessageUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.util.FileSystemUtils;
 import org.springframework.util.MimeType;
 
 import com.testautomationguru.utility.CompareMode;
 import com.testautomationguru.utility.ImageUtil;
 import com.testautomationguru.utility.PDFUtil;
 
+import jakarta.annotation.Nonnull;
+
 /**
  * Executes defined tests against the PdfPipe to ensure the correct working of this pipe.
  *
  * @author Laurens Mäkel
  */
-
+@Tag("slow")
 public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 	private static final String REGEX_PATH_IGNORE = "(?<=convertedDocument=\").*?(?=\")";
 	private static final String REGEX_TIMESTAMP_IGNORE = "(?<=Timestamp:).*(?=\" n)";
 	private static final String[] REGEX_IGNORES = {REGEX_PATH_IGNORE, REGEX_TIMESTAMP_IGNORE};
 
-	private static final TimeZone TEST_TZ = TimeZone.getTimeZone("Europe/Amsterdam");
-
+	@TempDir
 	private Path pdfOutputLocation;
 
 	@Override
@@ -83,34 +84,26 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 		return new PdfPipe();
 	}
 
+	@Override
 	@BeforeEach
 	public void setUp() throws Exception {
 		super.setUp();
-		pdfOutputLocation = Files.createTempDirectory("Pdf");
 		pipe.setPdfOutputLocation(pdfOutputLocation.toString());
 		pipe.setUnpackCommonFontsArchive(true);
 	}
 
+	@Override
 	@AfterEach
-	public void tearDown() throws Exception {
+	public void tearDown() {
 		synchronized(pdfOutputLocation) {
-			Files.walk(pdfOutputLocation).forEach(PdfPipeTest::removeFile); //Remove each individual file
-
-			Files.deleteIfExists(pdfOutputLocation); //Remove root folder
+			try {
+				FileSystemUtils.deleteRecursively(pdfOutputLocation);
+			} catch (IOException e) {
+				log.warn("Error deleting temporary file", e);
+			}
 		}
 
 		super.tearDown();
-	}
-
-	private static void removeFile(Path file) {
-		if(Files.isRegularFile(file)) {
-			try {
-				Files.delete(file);
-			} catch (IOException e) {
-				LogUtil.getLogger(PdfPipeTest.class).error("unable to delete file", e);
-				fail("unable to delete: "+ e.getMessage());
-			}
-		}
 	}
 
 	public void expectSuccessfulConversion(String pipeName, String fileToConvert, String metadataXml, String expectedFile) throws Exception {
@@ -131,7 +124,7 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 			assertNotNull(expectedFileUrl, "cannot find expected file ["+expectedFile+"]");
 			File file = new File(expectedFileUrl.toURI());
 			String expectedFilePath = file.getPath();
-			log.debug("converted relative path ["+expectedFile+"] to absolute file ["+expectedFilePath+"]");
+			log.debug("converted relative path [{}] to absolute file [{}]", expectedFile, expectedFilePath);
 
 			PDFUtil pdfUtil = createPdfUtil(CompareMode.VISUAL_MODE);
 			double compare = pdfUtil.compare(convertedFilePath, expectedFilePath);
@@ -287,7 +280,6 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 
 	@Test
 	public void emlFromGroupmailbox2Pdf() throws Exception {
-//		assumeTrue(TestAssertions.isTimeZone(TEST_TZ), "This test only runs for Europe/Amsterdam due to the time being in the output PDF");
 		expectSuccessfulConversion("EmlFromGroupmailbox", "/PdfPipe/eml-from-groupmailbox.eml", "/PdfPipe/xml-results/eml-from-groupmailbox.xml", "/PdfPipe/results/eml-from-groupmailbox.pdf");
 		assertTrue(session.containsKey("documents"));
 		assertTrue(session.containsKey("pdfConversionResultFiles1"));
@@ -504,7 +496,6 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 
 	@Test
 	public void mailWithWordAttachment() throws Exception {
-//		assumeTrue(TestAssertions.isTimeZone(TEST_TZ), "This test only runs for Europe/Amsterdam due to the time being in the output PDF");
 		expectSuccessfulConversion("mailWithWordAttachment", "/PdfPipe/MailWithAttachments/mailWithWordAttachment.msg", "/PdfPipe/xml-results/mailWithWordAttachment.xml", "/PdfPipe/results/mailWithWordAttachment.pdf");
 		assertTrue(session.containsKey("documents"));
 		assertTrue(session.containsKey("pdfConversionResultFiles1"));
@@ -514,7 +505,6 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 
 	@Test
 	public void mailWithAttachmentSaveSeparateFiles() throws Exception {
-//		assumeTrue(TestAssertions.isTimeZone(TEST_TZ), "This test only runs for Europe/Amsterdam due to the time being in the output PDF");
 		pipe.setSaveSeparate(true);
 
 		expectSuccessfulConversion("mailWithAttachmentSaveSeparateFiles", "/PdfPipe/MailWithAttachments/mailWithWordAttachment.msg", "/PdfPipe/xml-results/mailWithWordAttachmentSaveSeparate.xml", "/PdfPipe/results/mailWithWordAttachment.pdf");
@@ -528,7 +518,6 @@ public class PdfPipeTest extends PipeTestBase<PdfPipe> {
 
 	@Test
 	public void mailWithAttachmentDifferentSessionKeyNames() throws Exception {
-//		assumeTrue(TestAssertions.isTimeZone(TEST_TZ), "This test only runs for Europe/Amsterdam due to the time being in the output PDF");
 		pipe.setSaveSeparate(true);
 		pipe.setConversionResultDocumentSessionKey("output");
 		pipe.setConversionResultFilesSessionKey("pdf");

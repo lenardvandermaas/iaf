@@ -1,5 +1,5 @@
 /*
-   Copyright 2019-2023 WeAreFrank!
+   Copyright 2019-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -18,9 +18,8 @@ package org.frankframework.filesystem;
 import java.util.List;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import lombok.Getter;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.HasPhysicalDestination;
@@ -33,12 +32,11 @@ import org.frankframework.core.PipeStartException;
 import org.frankframework.doc.ElementType;
 import org.frankframework.doc.ElementType.ElementTypes;
 import org.frankframework.doc.ReferTo;
-
+import org.frankframework.documentbuilder.DocumentFormat;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.parameters.ParameterValueList;
 import org.frankframework.pipes.FixedForwardPipe;
 import org.frankframework.stream.Message;
-import org.frankframework.stream.document.DocumentFormat;
 import org.frankframework.util.SpringUtils;
 
 /**
@@ -46,11 +44,17 @@ import org.frankframework.util.SpringUtils;
  *
  * @see FileSystemActor
  *
- * @ff.parameter action overrides attribute <code>action</code>.
- * @ff.parameter filename overrides attribute <code>filename</code>. If not present, the input message is used.
- * @ff.parameter destination destination for action <code>rename</code> and <code>move</code>. Overrides attribute <code>destination</code>.
- * @ff.parameter contents contents for action <code>write</code> and <code>append</code>.
- * @ff.parameter inputFolder folder for actions <code>list</code>, <code>mkdir</code> and <code>rmdir</code>. This is a sub folder of baseFolder. Overrides attribute <code>inputFolder</code>. If not present, the input message is used.
+ * @ff.parameter action Overrides attribute <code>action</code>.
+ * @ff.parameter filename Overrides attribute <code>filename</code>. If not present, the input message is used.
+ * @ff.parameter destination Destination for action <code>rename</code> and <code>move</code>. Overrides attribute <code>destination</code>.
+ * @ff.parameter contents Content for action <code>write</code> and <code>append</code>.
+ * @ff.parameter inputFolder Folder for actions <code>list</code>, <code>mkdir</code> and <code>rmdir</code>. This is a sub folder of baseFolder. Overrides attribute <code>inputFolder</code>. If not present, the input message is used.
+ * @ff.parameter typeFilter Filter for action <code>list</code>. Specify <code>FILES_ONLY</code>, <code>FOLDERS_ONLY</code> or <code>FILES_AND_FOLDERS</code>. By default, only files are listed.
+ *
+ * @ff.forward fileNotFound If the input file was expected to exist, but was not found
+ * @ff.forward folderNotFound If the folder does not exist
+ * @ff.forward fileAlreadyExists If a file that should have been created as new already exists, or if a file already exists when it should have been created as folder
+ * @ff.forward folderAlreadyExists If a folder is to be created that already exists.
  *
  * @author Gerrit van Brakel
  */
@@ -109,8 +113,12 @@ public abstract class FileSystemPipe<F, FS extends IBasicFileSystem<F>> extends 
 		try {
 			result = actor.doAction(message, pvl, session);
 		} catch (FileSystemException e) {
+			String forwardName = e.getForward().getForwardName();
+
 			Map<String, PipeForward> forwards = getForwards();
-			if (forwards!=null && forwards.containsKey(PipeForward.EXCEPTION_FORWARD_NAME)) {
+			if (forwards.containsKey(forwardName)) {
+				return new PipeRunResult(getForwards().get(forwardName), e.getMessage());
+			} else if (forwards.containsKey(PipeForward.EXCEPTION_FORWARD_NAME)) {
 				return new PipeRunResult(getForwards().get(PipeForward.EXCEPTION_FORWARD_NAME), e.getMessage());
 			}
 			throw new PipeRunException(this, "cannot perform action", e);
@@ -220,5 +228,10 @@ public abstract class FileSystemPipe<F, FS extends IBasicFileSystem<F>> extends 
 	@ReferTo(FileSystemActor.class)
 	public void setOutputFormat(DocumentFormat outputFormat) {
 		actor.setOutputFormat(outputFormat);
+	}
+
+	@ReferTo(FileSystemActor.class)
+	public void setTypeFilter(TypeFilter typeFilter) {
+		actor.setTypeFilter(typeFilter);
 	}
 }

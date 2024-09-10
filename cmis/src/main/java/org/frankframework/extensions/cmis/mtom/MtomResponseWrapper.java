@@ -23,10 +23,10 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpServletResponseWrapper;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -63,7 +63,7 @@ public class MtomResponseWrapper extends HttpServletResponseWrapper {
 	public ServletOutputStream getOutputStream() throws IOException {
 
 		contentType = ContentType.parse(getContentType());
-		if(log.isTraceEnabled()) log.trace("recieved response with ContentType ["+contentType+"]");
+		log.trace("recieved response with ContentType [{}]", contentType);
 
 		// Als mimeType == text/html dan geen multipart doen :)
 		if(!contentType.getMimeType().contains("multipart")) {
@@ -141,7 +141,7 @@ public class MtomResponseWrapper extends HttpServletResponseWrapper {
 				}
 
 				Header determinedContentType = entity.getContentType();
-				if(log.isTraceEnabled()) log.trace("writing response with ContentType ["+determinedContentType.getValue()+"]");
+				log.trace("writing response with ContentType [{}]", determinedContentType::getValue);
 
 				setContentType(determinedContentType.getValue());
 				entity.writeTo(out);

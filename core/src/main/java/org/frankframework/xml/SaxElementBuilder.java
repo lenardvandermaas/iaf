@@ -27,9 +27,9 @@ import org.xml.sax.helpers.AttributesImpl;
 
 public class SaxElementBuilder implements AutoCloseable {
 
-	private ContentHandler handler;
+	private final ContentHandler handler;
 	private String elementName;
-	private SaxElementBuilder parent;
+	private final SaxElementBuilder parent;
 
 	private AttributesImpl attributes=null;
 	private boolean promotedToObject = false;
@@ -60,7 +60,7 @@ public class SaxElementBuilder implements AutoCloseable {
 
 	private SaxElementBuilder(String elementName, ContentHandler handler, SaxElementBuilder parent) {
 		this.handler = handler;
-		this.elementName = elementName;
+		this.elementName = XmlUtils.cleanseElementName(elementName);
 		this.parent = parent;
 		if (elementName!=null) {
 			attributes = new AttributesImpl();
@@ -126,12 +126,14 @@ public class SaxElementBuilder implements AutoCloseable {
 	}
 
 	public SaxElementBuilder startElement(String elementName) throws SAXException {
-		if (elementName==null) {
+		String cleanElementName = XmlUtils.cleanseElementName(elementName);
+
+		if (cleanElementName==null) {
 			promotedToObject = true;
 			return this;
 		}
 		writePendingStartElement();
-		return new SaxElementBuilder(elementName, handler, this);
+		return new SaxElementBuilder(cleanElementName, handler, this);
 	}
 
 	public void addElement(String elementName) throws SAXException {

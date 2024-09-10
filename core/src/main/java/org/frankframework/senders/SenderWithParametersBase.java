@@ -15,16 +15,14 @@
 */
 package org.frankframework.senders;
 
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
-
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.ISenderWithParameters;
 import org.frankframework.core.ParameterException;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.parameters.ParameterValueList;
 import org.frankframework.stream.Message;
@@ -49,7 +47,7 @@ public abstract class SenderWithParametersBase extends SenderBase implements ISe
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList==null) {
 			paramList=new ParameterList();
 		}
@@ -60,12 +58,13 @@ public abstract class SenderWithParametersBase extends SenderBase implements ISe
 	 * return the Parameters
 	 */
 	@Override
+	@Nullable
 	public ParameterList getParameterList() {
 		return paramList;
 	}
 
 	protected void checkStringAttributeOrParameter(String attributeName, String attributeValue, String parameterName) throws ConfigurationException {
-		if (StringUtils.isEmpty(attributeValue) && (getParameterList()==null || getParameterList().findParameter(parameterName)==null)) {
+		if (StringUtils.isEmpty(attributeValue) && (getParameterList()==null || !getParameterList().hasParameter(parameterName))) {
 			throw new ConfigurationException("either attribute "+attributeName+" or parameter "+parameterName+" must be specified");
 		}
 	}

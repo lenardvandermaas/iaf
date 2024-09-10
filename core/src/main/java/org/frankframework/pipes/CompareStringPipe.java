@@ -16,9 +16,6 @@
 package org.frankframework.pipes;
 
 import org.apache.commons.lang3.StringUtils;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.ParameterException;
 import org.frankframework.core.PipeLineSession;
@@ -32,6 +29,8 @@ import org.frankframework.parameters.ParameterValue;
 import org.frankframework.parameters.ParameterValueList;
 import org.frankframework.stream.Message;
 import org.frankframework.util.XmlUtils;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /**
  * Pipe that lexicographically compares two strings, that must NOT be empty.
@@ -39,18 +38,21 @@ import org.frankframework.util.XmlUtils;
  * @ff.parameter operand1 The first operand, holds v1. Defaults to input message
  * @ff.parameter operand2 The second operand, holds v2. Defaults to input message
  * @ff.parameter ignorepatterns (optional) contains a xml table with references to substrings which have to be ignored during the comparison. This xml table has the following layout:
- * <br/><code><pre>
- *	&lt;ignores&gt;
- *		&lt;ignore&gt;
- *			&lt;after&gt;...&lt;/after&gt;
- *			&lt;before&gt;...&lt;/before&gt;
- *		&lt;/ignore&gt;
- *		&lt;ignore&gt;
- *			&lt;after&gt;...&lt;/after&gt;
- *			&lt;before&gt;...&lt;/before&gt;
- *		&lt;/ignore&gt;
- *	&lt;/ignores&gt;
- * </pre></code><br/>Substrings between "after" and "before" are ignored
+ * <br/>
+ * <pre>{@code
+ * <ignores>
+ * 	   <ignore>
+ * 	       <after>...</after>
+ * 	       <before>...</before>
+ * 	   </ignore>
+ * 	   <ignore>
+ * 	       <after>...</after>
+ * 	       <before>...</before>
+ * 	   </ignore>
+ * </ignores>
+ * }</pre>
+ * <br/>
+ * Substrings between "after" and "before" are ignored
  *
  * @ff.forward lessthan operand1 &lt; operand2
  * @ff.forward greaterthan operand1 &gt; operand2
@@ -84,7 +86,7 @@ public class CompareStringPipe extends AbstractPipe {
 			throw new ConfigurationException("forward [" + EQUALSFORWARD + "] is not defined");
 
 		ParameterList parameterList = getParameterList();
-		if (parameterList.findParameter(OPERAND1) == null && parameterList.findParameter(OPERAND2) == null) {
+		if (!parameterList.hasParameter(OPERAND1) && !parameterList.hasParameter(OPERAND2)) {
 			throw new ConfigurationException("has neither parameter [" + OPERAND1 + "] nor parameter [" + OPERAND2 + "] specified");
 		}
 	}
@@ -158,8 +160,8 @@ public class CompareStringPipe extends AbstractPipe {
 		}
 
 		if (log.isDebugEnabled()) {
-			log.debug("operand1 [" + operand1 + "]");
-			log.debug("operand2 [" + operand2 + "]");
+			log.debug("operand1 [{}]", operand1);
+			log.debug("operand2 [{}]", operand2);
 		}
 
 		int comparison = StringUtils.compare(operand1, operand2);

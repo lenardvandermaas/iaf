@@ -19,14 +19,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-
+import jakarta.annotation.Nonnull;
+import lombok.Getter;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.apache.commons.lang3.StringUtils;
-
-import lombok.Getter;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.IMessageBrowser;
 import org.frankframework.core.ListenerException;
@@ -39,25 +37,21 @@ import org.frankframework.stream.Message;
 import org.frankframework.util.StringUtil;
 
 /**
- * Read messages from the IBISSTORE database table previously stored by a
- * {@link MessageStoreSender}.
- *
+ * Read messages from the IBISSTORE database table previously stored by a {@link MessageStoreSender}.
+ * <p>
  * Example configuration:
- * <code><pre>
-	&lt;Receiver
-		name="03 MessageStoreReceiver"
-		numThreads="4"
-		transactionAttribute="Required"
-		pollInterval="1"
-		&gt;
-		&lt;MessageStoreListener
-			name="03 MessageStoreListener"
-			slotId="${instance.name}/TestMessageStore"
-			statusValueInProcess="I"
-		/&gt;
-	&lt;/Receiver&gt;
-
- * </pre></code>
+ * <pre>{@code
+ * 	<Receiver
+ * 		name="03 MessageStoreReceiver"
+ * 		numThreads="4"
+ * 		transactionAttribute="Required"
+ * 		pollInterval="1">
+ * 		<MessageStoreListener
+ * 			name="03 MessageStoreListener"
+ * 			slotId="${instance.name}/TestMessageStore"
+ * 			statusValueInProcess="I" />
+ * 	</Receiver>
+ * }</pre>
  *
  * If you have a <code>MessageStoreListener</code>, failed messages are automatically kept in database
  * table IBISSTORE. Messages are also kept after successful processing. The state of a message
@@ -124,7 +118,6 @@ public class MessageStoreListener<M> extends JdbcTableListener<M> {
 		} else {
 			String query = "DELETE FROM "+getTableName()+" WHERE "+getKeyField()+" = ?";
 			setUpdateStatusQuery(ProcessState.DONE, query);
-			setUpdateStatusQuery(ProcessState.ERROR, query);
 		}
 	}
 

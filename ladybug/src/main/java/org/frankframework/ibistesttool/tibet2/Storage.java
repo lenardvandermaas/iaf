@@ -29,13 +29,14 @@ import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Map;
 
-import javax.annotation.PostConstruct;
-
+import jakarta.annotation.Nullable;
+import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.Configuration;
-import org.frankframework.core.IAdapter;
+import org.frankframework.core.Adapter;
 import org.frankframework.core.PipeLineResult;
 import org.frankframework.core.PipeLineSession;
+import org.frankframework.dbms.Dbms;
 import org.frankframework.dbms.IDbmsSupport;
 import org.frankframework.dbms.JdbcException;
 import org.frankframework.ibistesttool.IbisDebugger;
@@ -219,12 +220,12 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 				query.append(", ");
 			}
 			if (bigValueColumns.contains(metadataName)) {
-				query.append("substr(" + metadataName + ", 1, 100)");
+				query.append("substr(").append(metadataName).append(", 1, 100)");
 			} else {
 				query.append(metadataName);
 			}
 		}
-		String rowNumber = dbmsSupport.getRowNumber(metadataNames.get(0), "desc");
+		String rowNumber = getRowNumber(metadataNames.get(0));
 		if (StringUtils.isNotEmpty(rowNumber)) {
 			if (first) {
 				first = false;
@@ -233,7 +234,7 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 			}
 			query.append(rowNumber);
 		}
-		query.append(" from " + table);
+		query.append(" from ").append(table);
 		// According to SimpleDateFormat javadoc it needs to be synchronized when accessed by multiple threads, hence
 		// instantiate it here instead of instantiating it at class level and synchronizing it.
 		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(TIMESTAMP_PATTERN);
@@ -284,13 +285,13 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 		}
 		query.append(")");
 		if (StringUtils.isNotEmpty(rowNumber)) {
-			query.append(" where " + dbmsSupport.getRowNumberShortName() + " < ?");
+			query.append(" where rn < ?");
 			args.add(maxNumberOfRecords + 1);
 			argTypes.add(Types.INTEGER);
 		}
 		query.append(" order by ");
 		query.append(metadataNames.get(0) + " desc");
-		log.debug("Metadata query: " + query.toString());
+		log.debug("Metadata query: {}", query.toString());
 		List<List<Object>> metadata;
 		try {
 			metadata = jdbcTemplate.query(query.toString(), args.toArray(), argTypes.stream().mapToInt(i -> i).toArray(),
@@ -321,6 +322,14 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 		return metadata;
 	}
 
+	private @Nullable String getRowNumber(String metadataName) {
+		Dbms dbms = getDbmsSupport().getDbms();
+		if (dbms == Dbms.ORACLE || dbms == Dbms.MSSQL) {
+			return "row_number() over (order by "+metadataName+("desc"==null?"":" "+"desc")+") rn";
+		}
+		return null;
+	}
+
 	@Override
 	public Report getReport(Integer storageId) throws StorageException {
 		final Report report = new Report();
@@ -334,9 +343,9 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 		StringBuilder query = new StringBuilder("select "
 				+ reportColumnNames.get(0));
 		for (int i = 1; i < reportColumnNames.size(); i++) {
-			query.append(", " + reportColumnNames.get(i));
+			query.append(", ").append(reportColumnNames.get(i));
 		}
-		query.append(" from " + table + " where LOGID = ?");
+		query.append(" from ").append(table).append(" where LOGID = ?");
 		try {
 			jdbcTemplate.query(query.toString(),
 					new Object[]{storageId},
@@ -474,9 +483,9 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 
 	private void addExpression(StringBuilder query, String expression) {
 		if (query.charAt(query.length() - 1) == ' ') {
-			query.append("and " + expression + " ");
+			query.append("and ").append(expression).append(" ");
 		} else {
-			query.append(" where " + expression + " ");
+			query.append(" where ").append(expression).append(" ");
 		}
 	}
 
@@ -558,12 +567,12 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 		}
 		List<Checkpoint> checkpoints = report.getCheckpoints();
 		Checkpoint checkpoint = checkpoints.get(0);
-		Message message = Message.asMessage(checkpoint.getMessage());
+		Message message = new Message(checkpoint.getMessage());
 		Configuration config = ibisDebugger.getIbisManager().getConfiguration(DELETE_ADAPTER_CONFIG);
 		if (config == null) {
 			throw new StorageException("Configuration '" + DELETE_ADAPTER_CONFIG + "' not found");
 		}
-		IAdapter adapter = config.getRegisteredAdapter(DELETE_ADAPTER_NAME);
+		Adapter adapter = config.getRegisteredAdapter(DELETE_ADAPTER_NAME);
 		if (adapter == null) {
 			throw new StorageException("Adapter '" + DELETE_ADAPTER_NAME + "' not found");
 		}
@@ -571,7 +580,7 @@ public class Storage extends JdbcFacade implements LogStorage, CrudStorage {
 		PipeLineSession pipeLineSession = new PipeLineSession();
 		if(securityContext.getUserPrincipal() != null)
 			pipeLineSession.put("principal", securityContext.getUserPrincipal().getName());
-		PipeLineResult processResult = adapter.processMessage(TestTool.getCorrelationId(), message, pipeLineSession);
+		PipeLineResult processResult = adapter.processMessageDirect(TestTool.getCorrelationId(), message, pipeLineSession);
 		if (!processResult.isSuccessful()) {
 			throw new StorageException("Delete failed (see logging for more details)");
 		}

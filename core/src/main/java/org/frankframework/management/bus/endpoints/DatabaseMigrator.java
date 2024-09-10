@@ -22,10 +22,9 @@ import java.io.StringWriter;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.security.RolesAllowed;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import jakarta.annotation.security.RolesAllowed;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.management.bus.TopicSelector;
 import org.frankframework.management.bus.message.BinaryMessage;
@@ -33,7 +32,6 @@ import org.frankframework.management.bus.message.StringMessage;
 import org.springframework.messaging.Message;
 
 import org.frankframework.configuration.Configuration;
-import org.frankframework.configuration.IbisManager;
 import org.frankframework.configuration.classloaders.IConfigurationClassLoader;
 import org.frankframework.core.BytesResource;
 import org.frankframework.core.Resource;
@@ -55,8 +53,8 @@ public class DatabaseMigrator extends BusEndpointBase {
 	@ActionSelector(BusAction.DOWNLOAD)
 	@RolesAllowed({"IbisObserver", "IbisDataAdmin", "IbisAdmin", "IbisTester"})
 	public BinaryMessage downloadMigrationScript(Message<?> message) throws IOException {
-		String configurationName = BusMessageUtils.getHeader(message, BusMessageUtils.HEADER_CONFIGURATION_NAME_KEY, IbisManager.ALL_CONFIGS_KEY);
-		if(IbisManager.ALL_CONFIGS_KEY.equals(configurationName)) {
+		String configurationName = BusMessageUtils.getHeader(message, BusMessageUtils.HEADER_CONFIGURATION_NAME_KEY, BusMessageUtils.ALL_CONFIGS_KEY);
+		if(BusMessageUtils.ALL_CONFIGS_KEY.equals(configurationName)) {
 			ByteArrayOutputStream out = new ByteArrayOutputStream();
 			try (ZipOutputStream zos = new ZipOutputStream(out)) {
 				for(Configuration configuration : getIbisManager().getConfigurations()) {

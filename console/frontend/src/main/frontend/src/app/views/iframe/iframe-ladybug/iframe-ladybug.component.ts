@@ -8,15 +8,12 @@ import { BaseIframeComponent } from '../iframe.base';
   templateUrl: '../iframe.component.html',
   styleUrls: ['../iframe.component.scss'],
 })
-export class IframeLadybugComponent
-  extends BaseIframeComponent
-  implements OnInit
-{
+export class IframeLadybugComponent extends BaseIframeComponent implements OnInit {
   constructor(sanitizer: DomSanitizer, appService: AppService) {
     super(sanitizer, appService);
   }
 
   ngOnInit(): void {
-    this.setIframeSource('testtool');
+    this.setIframeSource('ladybug');
   }
 }

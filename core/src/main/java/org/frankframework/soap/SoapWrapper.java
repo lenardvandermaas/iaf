@@ -18,11 +18,11 @@ package org.frankframework.soap;
 import java.io.IOException;
 import java.util.StringTokenizer;
 
-import javax.xml.soap.MessageFactory;
-import javax.xml.soap.SOAPConstants;
-import javax.xml.soap.SOAPEnvelope;
-import javax.xml.soap.SOAPMessage;
-import javax.xml.soap.SOAPPart;
+import jakarta.xml.soap.MessageFactory;
+import jakarta.xml.soap.SOAPConstants;
+import jakarta.xml.soap.SOAPEnvelope;
+import jakarta.xml.soap.SOAPMessage;
+import jakarta.xml.soap.SOAPPart;
 import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.stream.StreamSource;
@@ -220,9 +220,9 @@ public class SoapWrapper {
 			return 0;
 		}
 		// Do not optimize transformer with extractMessageWithTransformers() method, since the output is always "0", even though fault parts are not found at all.
-		String faultCount = extractFaultCount11.transform(message.asSource());
+		String faultCount = extractFaultCount11.transform(message);
 		if (StringUtils.isEmpty(faultCount) || "0".equals(faultCount)) {
-			faultCount = extractFaultCount12.transform(message.asSource());
+			faultCount = extractFaultCount12.transform(message);
 		}
 		if (StringUtils.isEmpty(faultCount)) {
 			log.warn("getFaultCount(): could not extract fault count, result is empty");

@@ -2,15 +2,12 @@
 
 import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
 import { AppModule } from './app/app.module';
-import * as Prism from 'prismjs';
-import 'prismjs/plugins/line-numbers/prism-line-numbers';
-import 'prismjs/plugins/line-highlight/prism-line-highlight';
-import 'prismjs/plugins/custom-class/prism-custom-class';
+import type * as SockJS from 'sockjs-client';
 
 declare global {
-  let ff_version: string;
   interface Window {
     server: string;
+    SockJS: typeof SockJS; // use premad bundle because sockjs developers don't understand using global might be a bad idea in non-node environments
   }
   // var jQuery: jQuery; already defined in @types/jquery (type import solves this for us?)
   // var $: jQuery;
@@ -72,11 +69,7 @@ $(document).ready(function () {
   }
 
   window.addEventListener('keydown', function (event) {
-    if (
-      event.key == 'F' &&
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey
-    ) {
+    if (event.key == 'F' && (event.ctrlKey || event.metaKey) && event.shiftKey) {
       const searchbar = document.querySelector('#searchbar');
       if (searchbar) {
         event.preventDefault();
@@ -98,38 +91,10 @@ function fix_height_function(): void {
 }
 
 //Detect if using any (older) version of Internet Explorer
-if (
-  navigator.userAgent.includes('MSIE') ||
-  navigator.appVersion.includes('Trident/')
-) {
+if (navigator.userAgent.includes('MSIE') || navigator.appVersion.includes('Trident/')) {
   $('body').prepend(
     "<h2 style='text-align: center; color: #fdc300;'><strong>Internet Explorer 11 and older do not support XHR requests, the Frank!Console might not load correctly!</strong><br/>Please open this website in MS Edge, Mozilla Firefox or Google Chrome.</h2>",
   );
-}
-
-// this stinks but blame prismjs for the bad support for how its handling / giving content
-function customClassFunction({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  language,
-  type,
-  content,
-}: {
-  language: string;
-  type: string;
-  content: string;
-}): string | void {
-  if (
-    type === 'tag' &&
-    content.endsWith('<span class="token punctuation">></span>') &&
-    content.includes('adapter')
-  ) {
-    const nameRegex =
-      /<span class="token attr-value"><span class="token punctuation attr-equals">=<\/span><span class="token punctuation">"<\/span>(?<value>[^<]+)<span class="token punctuation">"<\/span><\/span>/g.exec(
-        content,
-      );
-    if (nameRegex?.groups) return `adapter-tag ${nameRegex?.groups['value']}`;
-    return 'adapter-tag';
-  }
 }
 
 // Automatically minimalize menu when screen is less than 768px
@@ -152,31 +117,4 @@ $(function () {
       scroll2top.animate({ opacity: 0, 'z-index': -1 }, 50, 'linear');
     }
   });
-
-  Prism.hooks.add('after-highlight', function (environment) {
-    // works only for <code> wrapped inside <pre data-line-numbers> (not inline)
-    const pre = environment.element.parentNode as HTMLElement;
-    if (
-      !pre ||
-      !/pre/i.test(pre.nodeName) ||
-      !pre.className.includes('line-numbers')
-    ) {
-      return;
-    }
-
-    const linesNumber = environment.code.split('\n').length;
-
-    const lines = Array.from({ length: linesNumber });
-    //See https://stackoverflow.com/questions/1295584/most-efficient-way-to-create-a-zero-filled-javascript-array
-    for (let index = 0; index < linesNumber; ++index)
-      lines[index] = `<span id="L${index + 1}"></span>`;
-
-    const lineNumbersWrapper = document.createElement('span');
-    lineNumbersWrapper.className = 'line-numbers-rows';
-    lineNumbersWrapper.innerHTML = lines.join('');
-
-    environment.element.append(lineNumbersWrapper);
-  });
-
-  Prism.plugins['customClass'].add(customClassFunction);
 });

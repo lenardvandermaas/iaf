@@ -31,6 +31,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
 import org.frankframework.core.ListenerException;
 import org.frankframework.core.PipeLine.ExitState;
 import org.frankframework.core.PipeLineResult;
@@ -38,10 +43,6 @@ import org.frankframework.core.ProcessState;
 import org.frankframework.receivers.RawMessageWrapper;
 import org.frankframework.stream.Message;
 import org.frankframework.util.DateFormatUtils;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 
 public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> extends HelperedFileSystemTestBase {
 
@@ -64,10 +65,12 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 
 	@Override
 	@AfterEach
-	public void tearDown() throws Exception {
-		if (fileSystemListener!=null) {
+	public void tearDown() {
+		try {
 			fileSystemListener.close();
-		};
+		} catch (ListenerException e) {
+			log.warn("Error closing filesystem listener", e);
+		}
 		super.tearDown();
 	}
 
@@ -226,11 +229,8 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 		fileSystemListener.configure();
 		fileSystemListener.open();
 
-		assertThrows(ListenerException.class, ()-> {
-			RawMessageWrapper<F> rawMessage=fileSystemListener.getRawMessage(threadContext);
-			fileSystemListener.changeProcessState(rawMessage, ProcessState.INPROCESS, "test");
-			assertNull(rawMessage);
-		});
+		RawMessageWrapper<F> rawMessage = fileSystemListener.getRawMessage(threadContext);
+		assertThrows(ListenerException.class, () -> fileSystemListener.changeProcessState(rawMessage, ProcessState.INPROCESS, "test"));
 	}
 
 	@Test
@@ -322,7 +322,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 
 		createFile(null, filename, contents);
 		F f = fileSystemListener.getFileSystem().toFile(fileAndFolderPrefix+filename);
-		F copiedFile = fileSystemListener.getFileSystem().copyFile(f, fileAndFolderPrefix+copiedFileFolderName, true, true);
+		F copiedFile = fileSystemListener.getFileSystem().copyFile(f, fileAndFolderPrefix+copiedFileFolderName, true);
 
 		rawMessage=fileSystemListener.getRawMessage(threadContext);
 		assertNotNull(rawMessage, "raw message must be not null when a file is available");
@@ -330,7 +330,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 		RawMessageWrapper<F> movedFile = fileSystemListener.changeProcessState(rawMessage, ProcessState.INPROCESS, null);
 		assertTrue(fileSystemListener.getFileSystem().getName(movedFile.getRawMessage()).startsWith(filename+"-"));
 
-		F movedCopiedFile = fileSystemListener.getFileSystem().moveFile(copiedFile, fileAndFolderPrefix, true, true);
+		F movedCopiedFile = fileSystemListener.getFileSystem().moveFile(copiedFile, fileAndFolderPrefix, true);
 
 		Date modificationDateFile = fileSystemListener.getFileSystem().getModificationTime(movedCopiedFile);
 		Date modificationDateSecondFile = fileSystemListener.getFileSystem().getModificationTime(f);
@@ -371,7 +371,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 		Date modificationDateFirstFile = fileSystemListener.getFileSystem().getModificationTime(f);
 		// copy file
 		for(int i=1;i<=6;i++) {
-			fileSystemListener.getFileSystem().copyFile(f, fileAndFolderPrefix+copiedFileFolderName+i, true, false);
+			fileSystemListener.getFileSystem().copyFile(f, fileAndFolderPrefix+copiedFileFolderName+i, true);
 		}
 
 		rawMessage=fileSystemListener.getRawMessage(threadContext);
@@ -384,7 +384,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 
 
 		for(int i=1;i<=6;i++) {
-			F movedCopiedFile = fileSystemListener.getFileSystem().moveFile(fileSystemListener.getFileSystem().toFile(fileAndFolderPrefix+copiedFileFolderName+i, filename), fileAndFolderPrefix, true, true);
+			F movedCopiedFile = fileSystemListener.getFileSystem().moveFile(fileSystemListener.getFileSystem().toFile(fileAndFolderPrefix+copiedFileFolderName+i, filename), fileAndFolderPrefix, true);
 
 			Date modificationDate = fileSystemListener.getFileSystem().getModificationTime(movedCopiedFile);
 			assertEquals(modificationDateFirstFile.getTime(), modificationDate.getTime());
@@ -425,7 +425,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 		String contents="Test Message Contents";
 
 		fileSystemListener.setMinStableTime(0);
-		fileSystemListener.setMessageType("contents");
+		fileSystemListener.setMessageType(FileSystemListener.MessageType.CONTENTS);
 		fileSystemListener.configure();
 		fileSystemListener.open();
 
@@ -470,7 +470,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 		String contents="Test Message Contents";
 
 		fileSystemListener.setMinStableTime(0);
-		fileSystemListener.setMessageType("name");
+		fileSystemListener.setMessageType(FileSystemListener.MessageType.NAME);
 		fileSystemListener.configure();
 		fileSystemListener.open();
 
@@ -703,7 +703,7 @@ public abstract class FileSystemListenerTest<F, FS extends IBasicFileSystem<F>> 
 
 		assertTrue(_folderExists(processedFolder), "Error folder must exist");
 		assertTrue(_fileExists(errorFolder, fileName), "Destination must exist in error folder");
-		assertTrue(!_fileExists(processedFolder, fileName), "Destination must not exist in processed folder");
+		assertFalse(_fileExists(processedFolder, fileName), "Destination must not exist in processed folder");
 		assertFalse(_fileExists(fileName), "Origin must have disappeared");
 	}
 	@Test

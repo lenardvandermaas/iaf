@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, Subject, catchError, of } from 'rxjs';
 import { DebugService } from './services/debug.service';
 import { Title } from '@angular/platform-browser';
-import { computeServerPath } from './utils';
+import { computeServerPath, deepMerge, findIndexOfAll } from './utils';
 
 export type RunState =
   | 'ERROR'
@@ -16,10 +16,7 @@ export type RunState =
 export type RunStateRuntime = RunState | 'loading';
 export type MessageLevel = 'INFO' | 'WARN' | 'ERROR';
 export type AdapterStatus = 'started' | 'warning' | 'stopped';
-export type TransactionalStores = Record<
-  'DONE' | 'ERROR',
-  { name: string; numberOfMessages: number }
->;
+export type TransactionalStores = Record<'DONE' | 'ERROR', { name: string; numberOfMessages: number }>;
 
 export type Receiver = {
   isEsbJmsFFListener: boolean;
@@ -141,7 +138,9 @@ export type MessageLog = {
   messages: AdapterMessage[];
   messageLevel: MessageLevel;
   exception?: string;
-  warnings?: string;
+  warnings?: string[];
+  serverTime?: number;
+  uptime?: number;
 };
 
 export type Summary = Record<Lowercase<RunState>, number>;
@@ -193,42 +192,30 @@ export type IAFRelease = {
   reactions: Record<string, number>;
 };
 
-export type ServerInfo = {
-  fileSystem: {
-    freeSpace: number;
-    totalSpace: number;
-  };
-  framework: {
-    name: string;
-    version: string;
-  };
-  instance: {
-    name: string;
-    version: string;
-  };
-  applicationServer: string;
-  javaVersion: string;
-  serverTime: number;
-  'dtap.stage': string;
-  'dtap.side': string;
-  processMetrics: {
-    maxMemory: number;
-    freeMemory: number;
-    totalMemory: number;
-    heapSize: number;
-  };
-  machineName: string;
-  uptime: number;
-  userName?: string;
-};
-
 export type ServerEnvironmentVariables = {
   'Application Constants': Record<string, Record<string, string>>;
   'Environment Variables': Record<string, string>;
   'System Properties': Record<string, string>;
 };
 
+export type ClusterMember = {
+  id: string;
+  address: string;
+  localMember: boolean;
+  selectedMember: boolean;
+  type: 'worker';
+  attributes: Record<string, string> & {
+    name?: string;
+    application?: string;
+  };
+};
+
 export type AppConstants = Record<string, string | number | boolean | object>;
+
+export type ServerErrorResponse = {
+  status: string;
+  error: string;
+};
 
 export const appInitState = {
   UN_INIT: -1,
@@ -249,6 +236,7 @@ export type ConsoleState = {
 })
 export class AppService {
   private loadingSubject = new Subject<boolean>();
+  private reloadSubject = new Subject<void>();
   private customBreadcrumbsSubject = new Subject<string>();
   private appConstantsSubject = new Subject<void>();
   private adaptersSubject = new Subject<Record<string, Adapter>>();
@@ -263,6 +251,7 @@ export class AppService {
   private iframePopoutUrlSubject = new Subject<string>();
 
   loading$ = this.loadingSubject.asObservable();
+  reload$ = this.reloadSubject.asObservable();
   customBreadscrumb$ = this.customBreadcrumbsSubject.asObservable();
   appConstants$ = this.appConstantsSubject.asObservable();
   adapters$ = this.adaptersSubject.asObservable();
@@ -272,8 +261,7 @@ export class AppService {
   messageLog$ = this.messageLogSubject.asObservable();
   instanceName$ = this.instanceNameSubject.asObservable();
   dtapStage$ = this.dtapStageSubject.asObservable();
-  databaseSchedulesEnabled$ =
-    this.databaseSchedulesEnabledSubject.asObservable();
+  databaseSchedulesEnabled$ = this.databaseSchedulesEnabledSubject.asObservable();
   summaries$ = this.summariesSubject.asObservable();
   iframePopoutUrl$ = this.iframePopoutUrlSubject.asObservable();
 
@@ -341,6 +329,10 @@ export class AppService {
     private debugService: DebugService,
   ) {}
 
+  triggerReload(): void {
+    this.reloadSubject.next();
+  }
+
   updateLoading(loading: boolean): void {
     this.loadingSubject.next(loading);
   }
@@ -353,14 +345,28 @@ export class AppService {
     this.appConstantsSubject.next();
   }
 
-  updateAdapters(adapters: Record<string, Adapter>): void {
-    this.adapters = adapters;
-    this.adaptersSubject.next(adapters);
+  updateAdapters(adapters: Record<string, Partial<Adapter>>): void {
+    this.adapters = deepMerge({}, this.adapters, adapters);
+    this.adaptersSubject.next({ ...this.adapters });
+  }
+
+  resetAdapters(): void {
+    this.adapters = {};
+    this.adaptersSubject.next(this.adapters);
+  }
+
+  removeAdapter(adapter: string): void {
+    delete this.adapters[adapter];
   }
 
   updateAlerts(alerts: Alert[]): void {
     this.alerts = alerts;
     this.alertsSubject.next(alerts);
+  }
+
+  resetAlerts(): void {
+    this.alerts = [];
+    this.alertsSubject.next(this.alerts);
   }
 
   startupError: string | null = null;
@@ -382,9 +388,14 @@ export class AppService {
   }
 
   messageLog: Record<string, MessageLog> = {};
-  updateMessageLog(messageLog: Record<string, MessageLog>): void {
-    this.messageLog = messageLog;
-    this.messageLogSubject.next(messageLog);
+  updateMessageLog(messageLog: Record<string, Partial<MessageLog>>): void {
+    this.messageLog = deepMerge({}, this.messageLog, messageLog);
+    this.messageLogSubject.next({ ...this.messageLog });
+  }
+
+  resetMessageLog(): void {
+    this.messageLog = {};
+    this.messageLogSubject.next(this.messageLog);
   }
 
   instanceName = '';
@@ -416,10 +427,7 @@ export class AppService {
   addAlert(type: string, configuration: string, message: string): void {
     const line = message.match(/line \[(\d+)]/);
     const isValidationAlert = message.includes('Validation');
-    const link =
-      line && !isValidationAlert
-        ? { name: configuration, '#': `L${line[1]}` }
-        : undefined;
+    const link = line && !isValidationAlert ? { name: configuration, '#': `L${line[1]}` } : undefined;
     this.alerts.push({
       link: link,
       type: type,
@@ -435,6 +443,16 @@ export class AppService {
     this.addAlert('danger', configuration, message);
   }
 
+  removeAlerts(configuration: string): void {
+    const indicesToRemove = findIndexOfAll(this.alerts, (alert) => alert.configuration === configuration);
+    const updatedAlerts = [...this.alerts];
+
+    for (const index of indicesToRemove) {
+      updatedAlerts.splice(index, 1);
+    }
+    this.updateAlerts(updatedAlerts);
+  }
+
   getServerPath(): string {
     let absolutePath = this.CONSOLE_STATE.server;
     if (absolutePath && absolutePath.slice(-1) != '/') absolutePath += '/';
@@ -442,39 +460,36 @@ export class AppService {
   }
 
   getIafVersions(UID: string): Observable<IAFRelease[] | never[]> {
-    return this.http
-      .get<IAFRelease[]>(`https://ibissource.org/iaf/releases/?q=${UID}`)
-      .pipe(
-        catchError((error) => {
-          this.debugService.error(
-            'An error occured while comparing IAF versions',
-            error,
-          );
-          return of([]);
-        }),
-      );
-  }
-
-  getServerInfo(): Observable<ServerInfo> {
-    return this.http.get<ServerInfo>(`${this.absoluteApiPath}server/info`);
-  }
-
-  getConfigurations(): Observable<Configuration[]> {
-    return this.http.get<Configuration[]>(
-      `${this.absoluteApiPath}server/configurations`,
+    return this.http.get<IAFRelease[]>(`https://ibissource.org/iaf/releases/?q=${UID}`).pipe(
+      catchError((error) => {
+        this.debugService.error('An error occured while comparing IAF versions', error);
+        return of([]);
+      }),
     );
   }
 
-  getAdapters(): Observable<Record<string, Adapter>> {
+  getClusterMembers(): Observable<ClusterMember[]> {
+    return this.http.get<ClusterMember[]>(`${this.absoluteApiPath}cluster/members?type=worker`);
+  }
+
+  updateSelectedClusterMember(id: string): Observable<object> {
+    return this.http.post(`${this.absoluteApiPath}cluster/members`, {
+      id,
+    });
+  }
+
+  getConfigurations(): Observable<Configuration[]> {
+    return this.http.get<Configuration[]>(`${this.absoluteApiPath}server/configurations`);
+  }
+
+  getAdapters(expanded?: string): Observable<Record<string, Adapter>> {
     return this.http.get<Record<string, Adapter>>(
-      `${this.absoluteApiPath}adapters`,
+      `${this.absoluteApiPath}adapters${expanded ? `?expanded=${expanded}` : ''}`,
     );
   }
 
   getEnvironmentVariables(): Observable<ServerEnvironmentVariables> {
-    return this.http.get<ServerEnvironmentVariables>(
-      `${this.absoluteApiPath}environmentvariables`,
-    );
+    return this.http.get<ServerEnvironmentVariables>(`${this.absoluteApiPath}environmentvariables`);
   }
 
   getServerHealth(): Observable<string> {
@@ -483,10 +498,7 @@ export class AppService {
     });
   }
 
-  updateAdapterSummary(
-    configurationName: string,
-    changedConfiguration: boolean,
-  ): void {
+  updateAdapterSummary(configurationName: string, changedConfiguration: boolean): void {
     const updated = Date.now();
     if (updated - 3000 < this.lastUpdated && !changedConfiguration) {
       //3 seconds
@@ -525,21 +537,14 @@ export class AppService {
     for (const adapterName in allAdapters) {
       const adapter = allAdapters[adapterName];
 
-      if (
-        adapter.configuration == configurationName ||
-        configurationName == 'All'
-      ) {
+      if (adapter.configuration == configurationName || configurationName == 'All') {
         // Only adapters for active config
         adapterSummary[adapter.state]++;
         for (const index in adapter.receivers) {
-          receiverSummary[
-            adapter.receivers[+index].state.toLowerCase() as Lowercase<RunState>
-          ]++;
+          receiverSummary[adapter.receivers[+index].state.toLowerCase() as Lowercase<RunState>]++;
         }
         for (const index in adapter.messages) {
-          const level = adapter.messages[
-            +index
-          ].level.toLowerCase() as Lowercase<MessageLevel>;
+          const level = adapter.messages[+index].level.toLowerCase() as Lowercase<MessageLevel>;
           messageSummary[level]++;
         }
       }

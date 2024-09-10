@@ -22,35 +22,31 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
-
-import lombok.Getter;
 import org.frankframework.configuration.Configuration;
 import org.frankframework.configuration.IbisManager;
-import org.frankframework.core.IAdapter;
+import org.frankframework.core.Adapter;
 import org.frankframework.core.IMessageBrowser;
 import org.frankframework.core.IPipe;
 import org.frankframework.core.ITransactionalStorage;
 import org.frankframework.core.PipeLine;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
-
 import org.frankframework.dbms.Dbms;
 import org.frankframework.jdbc.FixedQuerySender;
 import org.frankframework.jdbc.JdbcQuerySenderBase;
 import org.frankframework.jdbc.JdbcTransactionalStorage;
-import org.frankframework.parameters.Parameter;
-import org.frankframework.parameters.Parameter.ParameterType;
+import org.frankframework.parameters.DateParameter;
+import org.frankframework.parameters.DateParameter.DateFormatType;
 import org.frankframework.pipes.MessageSendingPipe;
 import org.frankframework.receivers.Receiver;
 import org.frankframework.scheduler.JobDef;
 import org.frankframework.stream.Message;
 import org.frankframework.util.AppConstants;
-
 import org.frankframework.util.DateFormatUtils;
 import org.frankframework.util.MessageKeeper.MessageKeeperLevel;
-
 import org.frankframework.util.SpringUtils;
 
 public class CleanupDatabaseJob extends JobDef {
@@ -115,10 +111,11 @@ public class CleanupDatabaseJob extends JobDef {
 				qs.setQueryType(JdbcQuerySenderBase.QueryType.OTHER);
 				qs.setTimeout(getQueryTimeout());
 				qs.setScalar(true);
-				String query = "DELETE FROM IBISLOCK WHERE EXPIRYDATE < ?";
-				qs.setQuery(query);
-				Parameter param = new Parameter("now", DateFormatUtils.now());
-				param.setType(ParameterType.TIMESTAMP);
+				qs.setQuery("DELETE FROM IBISLOCK WHERE EXPIRYDATE < ?");
+				DateParameter param = new DateParameter();
+				param.setName("now");
+				param.setValue(DateFormatUtils.now());
+				param.setFormatType(DateFormatType.TIMESTAMP);
 				qs.addParameter(param);
 				qs.configure();
 				qs.open();
@@ -133,7 +130,7 @@ public class CleanupDatabaseJob extends JobDef {
 			} catch (Exception e) {
 				String msg = "error while cleaning IBISLOCK table (as part of scheduled job execution): " + e.getMessage();
 				getMessageKeeper().add(msg, MessageKeeperLevel.ERROR);
-				log.error(getLogPrefix() + msg, e);
+				log.error("{}{}", getLogPrefix(), msg, e);
 			} finally {
 				if (qs != null) {
 					qs.close();
@@ -161,8 +158,10 @@ public class CleanupDatabaseJob extends JobDef {
 				qs.setTimeout(getQueryTimeout());
 				qs.setScalar(true);
 
-				Parameter param = new Parameter("now", DateFormatUtils.format(instant));
-				param.setType(ParameterType.TIMESTAMP);
+				DateParameter param = new DateParameter();
+				param.setName("now");
+				param.setValue(DateFormatUtils.format(instant));
+				param.setFormatType(DateFormatType.TIMESTAMP);
 				qs.addParameter(param);
 
 				String query = this.getCleanUpIbisstoreQuery(mlo.getTableName(), mlo.getKeyField(), mlo.getTypeField(), mlo.getExpiryDateField(), maxRows, qs.getDbmsSupport().getDbms());
@@ -221,7 +220,7 @@ public class CleanupDatabaseJob extends JobDef {
 				}
 			}
 
-			for (IAdapter adapter : configuration.getRegisteredAdapters()) {
+			for (Adapter adapter : configuration.getRegisteredAdapters()) {
 				PipeLine pipeLine = adapter.getPipeLine();
 				if (pipeLine != null) {
 					for (IPipe pipe : pipeLine.getPipes()) {
@@ -260,7 +259,7 @@ public class CleanupDatabaseJob extends JobDef {
 			if (!configuration.isActive()) {
 				continue;
 			}
-			for (IAdapter adapter : configuration.getRegisteredAdapters()) {
+			for (Adapter adapter : configuration.getRegisteredAdapters()) {
 				for (Receiver<?> receiver : adapter.getReceivers()) {
 					collectMessageLogs(messageLogs, receiver.getMessageLog());
 				}
@@ -299,7 +298,7 @@ public class CleanupDatabaseJob extends JobDef {
 				return "DELETE FROM " + tableName + " WHERE " + typeField + " IN ('" + IMessageBrowser.StorageType.MESSAGELOG_PIPE.getCode() + "','" + IMessageBrowser.StorageType.MESSAGELOG_RECEIVER.getCode()
 						+ "') AND " + expiryDateField + " < ?" + (maxRows > 0 ? " LIMIT " + maxRows : "");
 			default:
-				if (log.isDebugEnabled()) log.warn("Not sure how to clean up for dialect: " + dbmsName + " just trying something");
+				if (log.isDebugEnabled()) log.warn("Not sure how to clean up for dialect: {} just trying something", dbmsName);
 				return "DELETE FROM " + tableName + " WHERE " + keyField + " IN (SELECT " + keyField + " FROM " + tableName
 						+ " WHERE " + typeField + " IN ('" + IMessageBrowser.StorageType.MESSAGELOG_PIPE.getCode() + "','" + IMessageBrowser.StorageType.MESSAGELOG_RECEIVER.getCode()
 						+ "') AND " + expiryDateField + " < ?" + (maxRows > 0 ? " FETCH FIRST " + maxRows + " ROWS ONLY" : "") + ")";

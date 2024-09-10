@@ -20,10 +20,11 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import org.apache.commons.text.StringEscapeUtils;
-
+import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.ISenderWithParameters;
 import org.frankframework.core.ITransactionalStorage;
@@ -33,7 +34,8 @@ import org.frankframework.core.SenderException;
 import org.frankframework.core.SenderResult;
 import org.frankframework.core.TimeoutException;
 import org.frankframework.doc.ExcludeFromType;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.doc.Mandatory;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.stream.Message;
 import org.frankframework.util.StringUtil;
@@ -54,14 +56,13 @@ import org.frankframework.util.StringUtil;
  * to the adapter around the sender pipe, because errors may occur before the message reaches the sender pipe.
  * <br/><br/>
  * Example configuration:
- * <code><pre>
-	&lt;SenderPipe name="Send"&gt;
-		&lt;MessageStoreSender
-			slotId="${instance.name}/TestMessageStore"
-			onlyStoreWhenMessageIdUnique="false"
-		/&gt;
-	&lt;/SenderPipe&gt;
-</pre></code>
+ * <pre>{@code
+ * <SenderPipe name="Send">
+ *     <MessageStoreSender
+ * 	     slotId="${instance.name}/TestMessageStore"
+ * 		 onlyStoreWhenMessageIdUnique="false" />
+ * </SenderPipe>
+ * }</pre>
  *
  * @ff.parameter messageId messageId to check for duplicates, when this parameter isn't present the messageId is read from sessionKey messageId
  *
@@ -84,6 +85,9 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 			paramList.configure();
 		}
 		setType(StorageType.MESSAGESTORAGE.getCode());
+		if (StringUtils.isBlank(getSlotId())) {
+			throw new ConfigurationException("[slotId] has to be configured");
+		}
 		super.configure();
 	}
 
@@ -93,7 +97,7 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList == null) {
 			paramList = new ParameterList();
 		}
@@ -118,7 +122,7 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 	}
 
 	@Override
-	public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+	public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		try {
 			String messageToStore;
 			if (sessionKeys == null) {
@@ -136,7 +140,7 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 			// the messageId to be inserted in the messageStore defaults to the messageId of the session
 			String messageId = session.getMessageId();
 			String correlationID = session.getCorrelationId();
-			if (paramList != null && paramList.findParameter(PARAM_MESSAGEID) != null) {
+			if (paramList != null && paramList.hasParameter(PARAM_MESSAGEID)) {
 				try {
 					// the messageId to be inserted can also be specified via the parameter messageId
 					messageId = paramList.getValues(message, session).get(PARAM_MESSAGEID).asStringValue();
@@ -146,7 +150,7 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 			}
 			return new SenderResult(storeMessage(messageId, correlationID, new Date(), null, null, messageToStore));
 		} catch (IOException e) {
-			throw new SenderException(getLogPrefix(),e);
+			throw new SenderException("JdbcTableMessageBrowser ["+getName()+"] ",e);
 		}
 	}
 
@@ -167,4 +171,17 @@ public class MessageStoreSender extends JdbcTransactionalStorage<String> impleme
 		super.setOnlyStoreWhenMessageIdUnique(onlyStoreWhenMessageIdUnique);
 	}
 
+	/**
+	 * Set the slotId, an identifier to keep separate the messages inserted
+	 * by different MessageStoreSenders.
+	 * <br/>
+	 * This field should be set.
+	 *
+	 * @param string The {@code slotID} value for this MessageStoreSender.
+	 */
+	@Mandatory
+	@Override
+	public void setSlotId(String string) {
+		super.setSlotId(string);
+	}
 }

@@ -23,22 +23,20 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import lombok.Getter;
+import lombok.SneakyThrows;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.Supplier;
 import org.frankframework.stream.Message;
 import org.frankframework.util.ClassUtils;
 import org.frankframework.util.DateFormatUtils;
-
-import lombok.Getter;
-import lombok.SneakyThrows;
 
 
 /**
@@ -65,7 +63,6 @@ public class PipeLineSession extends HashMap<String,Object> implements AutoClose
 	public static final String HTTP_METHOD_KEY 	   = "HttpMethod";
 	public static final String HTTP_REQUEST_KEY    = "servletRequest";
 	public static final String HTTP_RESPONSE_KEY   = "servletResponse";
-	public static final String SERVLET_CONTEXT_KEY = "servletContext";
 
 	public static final String API_PRINCIPAL_KEY   = "apiPrincipal";
 	public static final String EXIT_STATE_CONTEXT_KEY="exitState";
@@ -95,6 +92,15 @@ public class PipeLineSession extends HashMap<String,Object> implements AutoClose
 	 */
 	public PipeLineSession(@Nonnull Map<String, Object> t) {
 		super(t);
+	}
+
+	public void setExitState(PipeLine.ExitState state, int code) {
+		put(EXIT_STATE_CONTEXT_KEY, state);
+		put(EXIT_CODE_CONTEXT_KEY, Integer.toString(code));
+	}
+
+	public void setExitState(PipeLineResult pipeLineResult) {
+		setExitState(pipeLineResult.getState(), pipeLineResult.getExitCode());
 	}
 
 	/**
@@ -294,6 +300,7 @@ public class PipeLineSession extends HashMap<String,Object> implements AutoClose
 			return obj.toString();
 		} else if (obj instanceof Message message) {
 			// Existing messages returned directly so they are not closed
+			message.assertNotClosed();
 			return message.asString();
 		} else {
 			// Other types are wrapped into a message, which is closed after converting to String.

@@ -47,7 +47,7 @@ public class DigesterRulesParser extends DigesterRulesHandler {
 
 	@Override
 	protected void handle(DigesterRule rule) {
-		if(log.isTraceEnabled()) log.trace("adding digesterRule " + rule.toString());
+		if(log.isTraceEnabled()) log.trace("adding digesterRule {}", rule.toString());
 
 		String pattern = rule.getPattern();
 
@@ -88,7 +88,7 @@ public class DigesterRulesParser extends DigesterRulesHandler {
 	 * Return the specified factory or the default factory when empty.
 	 * The factory should be Spring wired
 	 */
-	@SuppressWarnings({ "rawtypes", "unchecked" })
+	@SuppressWarnings({ "unchecked" })
 	private ObjectCreationFactory<Object> getFactory(String factory) {
 		if("null".equals(factory)) { //Check against a null-string when you don't want to use the default factory
 			if(log.isTraceEnabled()) log.trace("NULL factory specified, skip factory registration");
@@ -96,7 +96,7 @@ public class DigesterRulesParser extends DigesterRulesHandler {
 		} else if(StringUtils.isNotEmpty(factory)) {
 			Object object;
 			try {
-				if(log.isTraceEnabled()) log.trace("attempting to create new factory of class ["+factory+"]");
+				if(log.isTraceEnabled()) log.trace("attempting to create new factory of class [{}]", factory);
 				Class<?> clazz = ClassUtils.loadClass(factory);
 				object = autoWireAndInitializeBean(clazz); //Wire the factory through Spring
 			} catch (Exception e) {
@@ -107,7 +107,8 @@ public class DigesterRulesParser extends DigesterRulesHandler {
 			}
 			throw new IllegalArgumentException("factory type must implement ObjectCreationFactory");
 		}
-		if(log.isTraceEnabled()) log.trace("no factory specified, returing default ["+GenericFactory.class.getCanonicalName()+"]");
+		if(log.isTraceEnabled())
+			log.trace("no factory specified, returing default [{}]", GenericFactory.class.getCanonicalName());
 		return autoWireAndInitializeBean(GenericFactory.class); //Wire the factory through Spring
 	}
 

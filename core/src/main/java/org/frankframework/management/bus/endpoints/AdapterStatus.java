@@ -1,5 +1,5 @@
 /*
-   Copyright 2022 WeAreFrank!
+   Copyright 2022-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,12 +30,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import javax.annotation.security.RolesAllowed;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import jakarta.annotation.security.RolesAllowed;
 import org.apache.commons.lang3.StringUtils;
-import org.frankframework.management.bus.TopicSelector;
-import org.springframework.messaging.Message;
-
 import org.frankframework.configuration.Configuration;
 import org.frankframework.core.Adapter;
 import org.frankframework.core.HasPhysicalDestination;
@@ -60,6 +58,7 @@ import org.frankframework.management.bus.BusAction;
 import org.frankframework.management.bus.BusAware;
 import org.frankframework.management.bus.BusMessageUtils;
 import org.frankframework.management.bus.BusTopic;
+import org.frankframework.management.bus.TopicSelector;
 import org.frankframework.management.bus.dto.ProcessStateDTO;
 import org.frankframework.management.bus.message.JsonMessage;
 import org.frankframework.pipes.MessageSendingPipe;
@@ -70,6 +69,7 @@ import org.frankframework.util.ClassUtils;
 import org.frankframework.util.CredentialFactory;
 import org.frankframework.util.MessageKeeperMessage;
 import org.frankframework.util.RunState;
+import org.springframework.messaging.Message;
 
 @BusAware("frank-management-bus")
 @TopicSelector(BusTopic.ADAPTER)
@@ -94,7 +94,8 @@ public class AdapterStatus extends BusEndpointBase {
 		for(Configuration config : getIbisManager().getConfigurations()) {
 			for(Adapter adapter: config.getRegisteredAdapters()) {
 				Map<String, Object> adapterInfo = getAdapterInformation(adapter, expanded, showPendingMsgCount);
-				adapterList.put((String) adapterInfo.get("name"), adapterInfo);
+				String uniqueKey = String.format("%s/%s", adapter.getConfiguration().getName(), adapter.getName());
+				adapterList.put(uniqueKey, adapterInfo);
 			}
 		}
 
@@ -139,8 +140,8 @@ public class AdapterStatus extends BusEndpointBase {
 		return adapterInfo;
 	}
 
-
-	private Map<String, Object> addCertificateInfo(HasKeystore s) {
+	@Nullable
+	private Map<String, Object> addCertificateInfo(@Nonnull HasKeystore s) {
 		String certificate = s.getKeystore();
 		if (certificate == null || StringUtils.isEmpty(certificate))
 			return null;
@@ -191,7 +192,8 @@ public class AdapterStatus extends BusEndpointBase {
 		return certificateList;
 	}
 
-	private ArrayList<Object> mapAdapterPipes(Adapter adapter) {
+	@Nullable
+	private ArrayList<Object> mapAdapterPipes(@Nonnull Adapter adapter) {
 		if(!adapter.configurationSucceeded())
 			return null;
 		PipeLine pipeline = adapter.getPipeLine();
@@ -203,14 +205,14 @@ public class AdapterStatus extends BusEndpointBase {
 			IPipe pipe = pipeline.getPipe(i);
 			Map<String, PipeForward> pipeForwards = pipe.getForwards();
 
-			String pipename = pipe.getName();
+			String pipeName = pipe.getName();
 
 			Map<String, String> forwards = new HashMap<>();
 			for (PipeForward fwrd : pipeForwards.values()) {
 				forwards.put(fwrd.getName(), fwrd.getPath());
 			}
 
-			pipesInfo.put("name", pipename);
+			pipesInfo.put("name", pipeName);
 			pipesInfo.put("forwards", forwards);
 			if (pipe instanceof HasKeystore s) {
 				Map<String, Object> certInfo = addCertificateInfo(s);
@@ -263,7 +265,7 @@ public class AdapterStatus extends BusEndpointBase {
 				messageLogCount="?";
 			}
 		} catch (Exception e) {
-			log.warn("Cannot determine number of messages in messageLog ["+store.getName()+"]", e);
+			log.warn("Cannot determine number of messages in messageLog [{}]", store.getName(), e);
 			messageLogCount="error";
 		}
 		data.put("messageLogCount", messageLogCount);
@@ -281,7 +283,7 @@ public class AdapterStatus extends BusEndpointBase {
 			try {
 				return ts.getMessageCount();
 			} catch (Exception e) {
-				log.warn("Cannot determine number of messages in MessageBrowser ["+ClassUtils.nameOf(ts)+"]", e);
+				log.warn("Cannot determine number of messages in MessageBrowser [{}]", ClassUtils.nameOf(ts), e);
 				return "error";
 			}
 		} else {
@@ -324,7 +326,7 @@ public class AdapterStatus extends BusEndpointBase {
 				Map<String, Object> listenerInfo = new HashMap<>();
 				listenerInfo.put("name", listener.getName());
 				listenerInfo.put("class", ClassUtils.nameOf(listener));
-				if (listener instanceof HasPhysicalDestination) {
+				if (listener instanceof HasPhysicalDestination && receiver.configurationSucceeded()) {
 					String pd = ((HasPhysicalDestination)receiver.getListener()).getPhysicalDestinationName();
 					listenerInfo.put("destination", pd);
 				}
@@ -337,14 +339,13 @@ public class AdapterStatus extends BusEndpointBase {
 				if (isRestListener) {
 					RestListener rl = (RestListener) listener;
 					listenerInfo.put("restUriPattern", rl.getRestUriPattern());
-					listenerInfo.put("isView", rl.isView());
 				}
 
 				receiverInfo.put("listener", listenerInfo);
 			}
 
 			if ((listener instanceof JmsListenerBase jlb) && showPendingMsgCount) {
-				JmsBrowser<javax.jms.Message> jmsBrowser;
+				JmsBrowser<jakarta.jms.Message> jmsBrowser;
 				if (StringUtils.isEmpty(jlb.getMessageSelector())) {
 					jmsBrowser = new JmsBrowser<>();
 				} else {
@@ -364,12 +365,12 @@ public class AdapterStatus extends BusEndpointBase {
 			if (sender != null) {
 				receiverInfo.put("senderName", sender.getName());
 				receiverInfo.put("senderClass", ClassUtils.nameOf(sender));
-				if (sender instanceof HasPhysicalDestination destination) {
+				if (sender instanceof HasPhysicalDestination destination && receiver.configurationSucceeded()) {
 					String pd = destination.getPhysicalDestinationName();
 					receiverInfo.put("senderDestination", pd);
 				}
 			}
-			if (receiver.isThreadCountReadable()) {
+			if (receiver.isThreadCountReadable() && receiver.configurationSucceeded()) {
 				receiverInfo.put("threadCount", receiver.getCurrentThreadCount());
 				receiverInfo.put("maxThreadCount", receiver.getMaxThreadCount());
 
@@ -390,7 +391,7 @@ public class AdapterStatus extends BusEndpointBase {
 			MessageKeeperMessage msg = adapter.getMessageKeeper().getMessage(t);
 
 			message.put("message", msg.getMessageText());
-			message.put("date", msg.getMessageDate());
+			message.put("date", Date.from(msg.getMessageDate()));
 			message.put("level", msg.getMessageLevel());
 			message.put("capacity", adapter.getMessageKeeper().capacity());
 
@@ -403,8 +404,7 @@ public class AdapterStatus extends BusEndpointBase {
 		Map<String, Object> adapterInfo = new HashMap<>();
 		Configuration config = adapter.getConfiguration();
 
-		String adapterName = adapter.getName();
-		adapterInfo.put("name", adapterName);
+		adapterInfo.put("name", adapter.getName());
 		adapterInfo.put("description", adapter.getDescription());
 		adapterInfo.put("configuration", config.getName() );
 		RunState adapterRunState = adapter.getRunState();

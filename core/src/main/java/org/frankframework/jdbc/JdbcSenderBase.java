@@ -18,6 +18,10 @@ package org.frankframework.jdbc;
 import java.sql.Connection;
 import java.sql.SQLException;
 
+import io.micrometer.core.instrument.DistributionSummary;
+import jakarta.annotation.Nonnull;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.Adapter;
@@ -28,17 +32,13 @@ import org.frankframework.core.SenderException;
 import org.frankframework.core.SenderResult;
 import org.frankframework.core.TimeoutException;
 import org.frankframework.dbms.JdbcException;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.statistics.FrankMeterType;
 import org.frankframework.statistics.HasStatistics;
 import org.frankframework.statistics.MetricsInitializer;
 import org.frankframework.stream.Message;
 import org.frankframework.util.JdbcUtil;
-
-import io.micrometer.core.instrument.DistributionSummary;
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * Base class for building JDBC-senders.
@@ -61,7 +61,7 @@ public abstract class JdbcSenderBase<H> extends JdbcFacade implements IBlockEnab
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList==null) {
 			paramList=new ParameterList();
 		}
@@ -111,7 +111,7 @@ public abstract class JdbcSenderBase<H> extends JdbcFacade implements IBlockEnab
 				connection.close();
 			}
 		} catch (SQLException e) {
-			log.warn(getLogPrefix() + "caught exception stopping sender", e);
+			log.warn("caught exception stopping sender", e);
 		} finally {
 			connection = null;
 			super.close();
@@ -132,9 +132,7 @@ public abstract class JdbcSenderBase<H> extends JdbcFacade implements IBlockEnab
 	}
 
 	@Override
-	// implements ISender.sendMessage()
-	// can make this sendMessage() 'final', debugging handled by the newly implemented sendMessage() below, that includes the MessageOutputStream
-	public final SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+	public final @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		H blockHandle = openBlock(session);
 		try {
 			return sendMessage(blockHandle, message, session);

@@ -20,7 +20,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.Map;
 
-import lombok.Getter;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarning;
 import org.frankframework.core.HasPhysicalDestination;
@@ -28,15 +27,15 @@ import org.frankframework.core.IDataIterator;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.PipeStartException;
 import org.frankframework.core.SenderException;
-
-import org.frankframework.doc.ReferTo;
 import org.frankframework.dbms.IDbmsSupport;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.doc.ReferTo;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.pipes.StringIteratorPipe;
 import org.frankframework.stream.Message;
 import org.frankframework.util.JdbcUtil;
-
 import org.frankframework.util.SpringUtils;
+
+import lombok.Getter;
 
 
 /**
@@ -139,7 +138,7 @@ public abstract class JdbcIteratingPipeBase extends StringIteratorPipe implement
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		querySender.addParameter(p);
 	}
 
@@ -148,7 +147,7 @@ public abstract class JdbcIteratingPipeBase extends StringIteratorPipe implement
 		return querySender.getPhysicalDestinationName();
 	}
 
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.7.0")
 	@ConfigurationWarning("We discourage the use of jmsRealms for datasources. To specify a datasource other then the default, use the datasourceName attribute directly, instead of referring to a realm")
 	public void setJmsRealm(String jmsRealmName) {
 		querySender.setJmsRealm(jmsRealmName);
@@ -195,7 +194,8 @@ public abstract class JdbcIteratingPipeBase extends StringIteratorPipe implement
 	}
 
 	@ReferTo(JdbcQuerySenderBase.class)
-	@Deprecated //BLOBs are binary, they should not contain character data
+	@Deprecated(forRemoval = true, since = "7.9.0")
+	//BLOBs are binary, they should not contain character data!
 	public void setBlobCharset(String charset) {
 		querySender.setBlobCharset(charset);
 	}

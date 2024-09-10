@@ -1,5 +1,5 @@
 /*
-   Copyright 2013, 2018 Nationale-Nederlanden, 2020-2023 WeAreFrank!
+   Copyright 2013, 2018 Nationale-Nederlanden, 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -32,15 +32,7 @@ import org.frankframework.util.DateFormatUtils;
  */
 public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 
-	protected static final String NEXT_VALUE_FOR = "NEXT VALUE FOR ";
-	protected static final String SELECT_CURRENT_VALUE = "SELECT CURRENT_VALUE FROM SYS.SEQUENCES WHERE NAME = ";
-	protected static final String DEFAULT_BLOB_VALUE = "0x";
-	protected static final String WITH_UPDLOCK_ROWLOCK = "WITH (UPDLOCK, ROWLOCK)";
-	protected static final String GET_DATE = "GETDATE()";
-	protected static final String CURRENT_TIMESTAMP = "CURRENT_TIMESTAMP";
-
-	private final int CLOB_SIZE_TRESHOLD = 10000000; // larger than this is considered a CLOB, smaller a string
-
+	private static final int CLOB_SIZE_THRESHOLD = 10_000_000; // larger than this is considered a CLOB, smaller a string
 
 	@Override
 	public Dbms getDbms() {
@@ -68,11 +60,6 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 	}
 
 	@Override
-	public String getInsertedAutoIncrementValueQuery(String sequenceName) {
-		return "SELECT @@IDENTITY";
-	}
-
-	@Override
 	public String getTimestampFieldType() {
 		return "DATETIME";
 	}
@@ -96,18 +83,8 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 	}
 
 	@Override
-	public String emptyBlobValue() {
-		return "0x";
-	}
-
-	@Override
-	public String getClobFieldType() {
-		return "VARCHAR(MAX)";
-	}
-
-	@Override
 	public boolean isClobType(final ResultSetMetaData rsmeta, final int colNum) throws SQLException {
-		return (rsmeta.getColumnType(colNum) == Types.VARCHAR || rsmeta.getColumnType(colNum) == Types.NVARCHAR) && rsmeta.getPrecision(colNum) > CLOB_SIZE_TRESHOLD;
+		return (rsmeta.getColumnType(colNum) == Types.VARCHAR || rsmeta.getColumnType(colNum) == Types.NVARCHAR) && rsmeta.getPrecision(colNum) > CLOB_SIZE_THRESHOLD;
 	}
 
 
@@ -144,11 +121,6 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 	}
 
 	@Override
-	public String getFirstRecordQuery(String tableName) {
-		return "select top(1) * from " + tableName;
-	}
-
-	@Override
 	public String prepareQueryTextForNonLockingRead(String selectQuery) throws DbmsException {
 		if (StringUtils.isEmpty(selectQuery) || !selectQuery.toLowerCase().startsWith(KEYWORD_SELECT)) {
 			throw new DbmsException("query [" + selectQuery + "] must start with keyword [" + KEYWORD_SELECT + "]");
@@ -174,29 +146,8 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 	}
 
 	@Override
-	public String getRowNumber(String order, String sort) {
-		return "row_number() over (order by " + order + (sort == null ? "" : " " + sort) + ") " + getRowNumberShortName();
-	}
-
-	@Override
-	public String getRowNumberShortName() {
-		return "rn";
-	}
-
-	@Override
 	public String getLength(String column) {
 		return "LEN(" + column + ")";
-	}
-
-	@Override
-	public boolean isIndexPresent(Connection conn, String schemaOwner, String tableName, String indexName) {
-		String query = "select * from sys.indexes where name = '" + indexName + "' and object_id = object_id('" + tableName + "')";
-		try {
-			return DbmsUtil.executeIntQuery(conn, query) >= 1;
-		} catch (Exception e) {
-			log.warn("could not determine presence of identity on table [{}]", tableName, e);
-			return false;
-		}
 	}
 
 	@Override
@@ -214,14 +165,14 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 	public boolean hasIndexOnColumns(Connection conn, String schemaOwner, String tableName, List<String> columns) {
 		StringBuilder query = new StringBuilder("select count(*) from sys.indexes si");
 		for (int i = 1; i <= columns.size(); i++) {
-			query.append(", sys.index_columns sic" + i);
+			query.append(", sys.index_columns sic").append(i);
 		}
-		query.append(" where si.object_id = object_id('" + tableName + "')");
+		query.append(" where si.object_id = object_id('").append(tableName).append("')");
 		for (int i = 1; i <= columns.size(); i++) {
-			query.append(" and si.object_id=sic" + i + ".object_id");
-			query.append(" and si.index_id=sic" + i + ".index_id");
-			query.append(" and col_name(sic" + i + ".object_id, sic" + i + ".column_id)='" + columns.get(i - 1) + "'");
-			query.append(" and sic" + i + ".index_column_id=" + i);
+			query.append(" and si.object_id=sic").append(i).append(".object_id");
+			query.append(" and si.index_id=sic").append(i).append(".index_id");
+			query.append(" and col_name(sic").append(i).append(".object_id, sic").append(i).append(".column_id)='").append(columns.get(i - 1)).append("'");
+			query.append(" and sic").append(i).append(".index_column_id=").append(i);
 		}
 		try {
 			return DbmsUtil.executeIntQuery(conn, query.toString()) >= 1;
@@ -229,11 +180,6 @@ public class MsSqlServerDbmsSupport extends GenericDbmsSupport {
 			log.warn("could not determine presence of index columns on table [{}] using query [{}]", tableName, query, e);
 			return false;
 		}
-	}
-
-	@Override
-	public String getBooleanFieldType() {
-		return "BIT";
 	}
 
 	@Override

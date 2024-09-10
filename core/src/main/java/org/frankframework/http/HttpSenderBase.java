@@ -27,9 +27,12 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-import javax.servlet.http.HttpServletResponse;
 import javax.xml.transform.TransformerConfigurationException;
 
+import jakarta.annotation.Nonnull;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.MethodNotSupportedException;
@@ -48,7 +51,7 @@ import org.frankframework.core.SenderException;
 import org.frankframework.core.SenderResult;
 import org.frankframework.core.TimeoutException;
 import org.frankframework.encryption.KeystoreType;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.parameters.ParameterValue;
 import org.frankframework.parameters.ParameterValueList;
@@ -60,9 +63,6 @@ import org.frankframework.util.StreamUtil;
 import org.frankframework.util.StringUtil;
 import org.frankframework.util.TransformerPool;
 import org.frankframework.util.XmlUtils;
-
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * Sender for the HTTP protocol using GET, POST, PUT or DELETE using httpclient 4+
@@ -101,7 +101,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 	private @Getter String urlParam = "url";
 
 	public enum HttpMethod {
-		GET,POST,PUT,PATCH,DELETE,HEAD,REPORT;
+		GET, POST, PUT, PATCH, DELETE, HEAD, REPORT
 	}
 	private @Getter HttpMethod httpMethod = HttpMethod.GET;
 
@@ -115,12 +115,12 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 	private @Getter String resultStatusCodeSessionKey;
 	private @Getter String parametersToSkipWhenEmpty;
 
-	private final boolean APPEND_MESSAGEID_HEADER = AppConstants.getInstance(getConfigurationClassLoader()).getBoolean("http.headers.messageid", true);
-	private final boolean APPEND_CORRELATIONID_HEADER = AppConstants.getInstance(getConfigurationClassLoader()).getBoolean("http.headers.correlationid", true);
+	private final boolean appendMessageidHeader = AppConstants.getInstance(getConfigurationClassLoader()).getBoolean("http.headers.messageid", true);
+	private final boolean appendCorrelationidHeader = AppConstants.getInstance(getConfigurationClassLoader()).getBoolean("http.headers.correlationid", true);
 
 	private TransformerPool transformerPool=null;
 
-	protected Parameter urlParameter;
+	protected IParameter urlParameter;
 
 	protected URI staticUri;
 
@@ -131,7 +131,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 	protected ParameterList paramList = null;
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList==null) {
 			paramList=new ParameterList();
 		}
@@ -159,7 +159,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 			if (StringUtils.isNotEmpty(getHeadersParams())) {
 				headerParamsSet.addAll(StringUtil.split(getHeadersParams()));
 			}
-			for (Parameter p: paramList) {
+			for (IParameter p: paramList) {
 				String paramName = p.getName();
 				if (!headerParamsSet.contains(paramName)) {
 					requestOrBodyParamsSet.add(paramName);
@@ -192,7 +192,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 		try {
 			if (urlParameter == null) {
 				if (StringUtils.isEmpty(getUrl())) {
-					throw new ConfigurationException(getLogPrefix()+"url must be specified, either as attribute, or as parameter");
+					throw new ConfigurationException("url must be specified, either as attribute, or as parameter");
 				}
 				staticUri = getURI(getUrl());
 			}
@@ -220,14 +220,14 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 		try {
 			start();
 		} catch (Exception e) {
-			throw new SenderException(getLogPrefix()+"unable to create HttpClient", e);
+			throw new SenderException("unable to create HttpClient", e);
 		}
 
 		if (transformerPool!=null) {
 			try {
 				transformerPool.open();
 			} catch (Exception e) {
-				throw new SenderException(getLogPrefix()+"cannot start TransformerPool", e);
+				throw new SenderException("cannot start TransformerPool", e);
 			}
 		}
 	}
@@ -279,7 +279,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 							log.debug("appending parameter [{}]", parameterToAppend);
 							path.append(parameterToAppend);
 						} catch (UnsupportedEncodingException e) {
-							throw new SenderException(getLogPrefix()+"["+getCharSet()+"] encoding error. Failed to add parameter ["+pv.getDefinition().getName()+"]", e);
+							throw new SenderException("["+getCharSet()+"] encoding error. Failed to add parameter ["+pv.getDefinition().getName()+"]", e);
 						}
 					}
 				}
@@ -287,7 +287,6 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 		}
 		return parametersAppended;
 	}
-
 
 	/**
 	 * Returns the true name of the class and not <code>XsltPipe$$EnhancerBySpringCGLIB$$563e6b5d</code>.
@@ -337,30 +336,36 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 	}
 
 	@Override
-	public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
-		ParameterValueList pvl = null;
-		try {
-			if (paramList !=null) {
-				pvl=paramList.getValues(message, session);
+	public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
+		ParameterValueList pvl;
+		if (paramList != null) {
+			try {
+				pvl = paramList.getValues(message, session);
+			} catch (ParameterException e) {
+				throw new SenderException("caught exception evaluating parameters", e);
 			}
-		} catch (ParameterException e) {
-			throw new SenderException(getLogPrefix()+"Sender ["+getName()+"] caught exception evaluating parameters",e);
+		} else {
+			pvl = null;
 		}
 
 		URI targetUri;
 		final HttpRequestBase httpRequestBase;
 		try {
-			if (urlParameter != null) {
+			if (urlParameter != null && pvl != null) {
 				String url = pvl.get(getUrlParam()).asStringValue();
-				targetUri = getURI(url);
+				try {
+					targetUri = getURI(url);
+				} catch (URISyntaxException e) {
+					throw new SenderException("cannot interpret url", e);
+				}
 			} else {
 				targetUri = staticUri;
 			}
 
 			// Resolve HeaderParameters
 			Map<String, String> headersParamsMap = new HashMap<>();
-			if (!headerParamsSet.isEmpty() && pvl!=null) {
-				log.debug("appending header parameters "+headersParams);
+			if (!headerParamsSet.isEmpty() && pvl != null) {
+				log.debug("appending header parameters {}", headersParams);
 				for (String paramName:headerParamsSet) {
 					ParameterValue paramValue = pvl.get(paramName);
 					if(paramValue != null) {
@@ -377,16 +382,14 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 				throw new MethodNotSupportedException("could not find implementation for method ["+getHttpMethod()+"]");
 
 			//Set all headers
-			if(session != null) {
-				if (APPEND_MESSAGEID_HEADER && StringUtils.isNotEmpty(session.getMessageId())) {
-					httpRequestBase.setHeader(MESSAGE_ID_HEADER, session.getMessageId());
-				}
-				if (APPEND_CORRELATIONID_HEADER && StringUtils.isNotEmpty(session.getCorrelationId())) {
-					httpRequestBase.setHeader(CORRELATION_ID_HEADER, session.getCorrelationId());
-				}
+			if (appendMessageidHeader && StringUtils.isNotEmpty(session.getMessageId())) {
+				httpRequestBase.setHeader(MESSAGE_ID_HEADER, session.getMessageId());
 			}
-			for (String param: headersParamsMap.keySet()) {
-				httpRequestBase.setHeader(param, headersParamsMap.get(param));
+			if (appendCorrelationidHeader && StringUtils.isNotEmpty(session.getCorrelationId())) {
+				httpRequestBase.setHeader(CORRELATION_ID_HEADER, session.getCorrelationId());
+			}
+			for (Map.Entry<String, String> param: headersParamsMap.entrySet()) {
+				httpRequestBase.setHeader(param.getKey(), param.getValue());
 			}
 
 			log.info("configured httpclient for host [{}]", targetUri::getHost);
@@ -451,7 +454,7 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 			// This will cause the connection to become stale.
 
 			if (tg.cancel()) {
-				throw new TimeoutException(getLogPrefix()+"timeout of ["+getTimeout()+"] ms exceeded");
+				throw new TimeoutException("timeout of ["+getTimeout()+"] ms exceeded");
 			}
 		}
 
@@ -471,13 +474,13 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 			if (transformerPool != null && xhtml != null) {
 				log.debug("transforming result [{}]", xhtml);
 				try {
-					xhtml = transformerPool.transform(XmlUtils.stringToSourceForSingleUse(xhtml));
+					xhtml = transformerPool.transform(xhtml);
 				} catch (Exception e) {
 					throw new SenderException("Exception on transforming input", e);
 				}
 			}
 
-			result = Message.asMessage(xhtml);
+			result = new Message(xhtml);
 		}
 
 		if (result == null) {
@@ -534,22 +537,22 @@ public abstract class HttpSenderBase extends HttpSessionBase implements HasPhysi
 		charSet = string;
 	}
 
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.7.0")
 	@ConfigurationWarning("Please use attribute keystore instead")
 	public void setCertificate(String string) {
 		setKeystore(string);
 	}
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.7.0")
 	@ConfigurationWarning("has been replaced with keystoreType")
 	public void setCertificateType(KeystoreType value) {
 		setKeystoreType(value);
 	}
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.7.0")
 	@ConfigurationWarning("Please use attribute keystoreAuthAlias instead")
 	public void setCertificateAuthAlias(String string) {
 		setKeystoreAuthAlias(string);
 	}
-	@Deprecated
+	@Deprecated(forRemoval = true, since = "7.7.0")
 	@ConfigurationWarning("Please use attribute keystorePassword instead")
 	public void setCertificatePassword(String string) {
 		setKeystorePassword(string);

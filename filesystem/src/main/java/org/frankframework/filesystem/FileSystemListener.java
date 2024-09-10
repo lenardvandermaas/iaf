@@ -1,5 +1,5 @@
 /*
-   Copyright 2019-2023 WeAreFrank!
+   Copyright 2019-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 */
 package org.frankframework.filesystem;
 
-import java.io.IOException;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,17 +24,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.logging.log4j.Logger;
-import org.springframework.context.ApplicationContext;
-import org.xml.sax.SAXException;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarnings;
 import org.frankframework.core.HasPhysicalDestination;
@@ -46,22 +41,23 @@ import org.frankframework.core.ListenerException;
 import org.frankframework.core.PipeLineResult;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.ProcessState;
+import org.frankframework.documentbuilder.DocumentBuilderFactory;
+import org.frankframework.documentbuilder.DocumentFormat;
+import org.frankframework.documentbuilder.ObjectBuilder;
 import org.frankframework.receivers.MessageWrapper;
 import org.frankframework.receivers.RawMessageWrapper;
 import org.frankframework.stream.Message;
-import org.frankframework.stream.document.DocumentBuilderFactory;
-import org.frankframework.stream.document.DocumentFormat;
-import org.frankframework.stream.document.ObjectBuilder;
 import org.frankframework.util.ClassUtils;
 import org.frankframework.util.DateFormatUtils;
 import org.frankframework.util.LogUtil;
 import org.frankframework.util.SpringUtils;
+import org.springframework.context.ApplicationContext;
+import org.xml.sax.SAXException;
 
 /**
  * {@link IPullingListener listener} that looks in a {@link IBasicFileSystem FileSystem} for files.
- * When a file is found, it is moved to an process-folder, so that it isn't found more then once.
+ * When a file is found, it is moved to a process-folder, so that it isn't found more than once.
  * The name of the moved file is passed to the pipeline.
- *
  *
  * @author Gerrit van Brakel
  */
@@ -83,6 +79,17 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 		KEYS_COPIED_TO_MESSAGE_CONTEXT.add(FILEPATH_KEY);
 	}
 
+	public interface IMessageType {
+		String name();
+	}
+
+	public enum MessageType implements IMessageType {
+		NAME,
+		PATH,
+		CONTENTS,
+		INFO
+	}
+
 	private @Getter String name;
 	private @Getter String inputFolder;
 	private @Getter String inProcessFolder;
@@ -96,7 +103,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 	private @Getter boolean overwrite = false;
 	private @Getter int numberOfBackups=0;
 	private @Getter boolean fileTimeSensitive=false;
-	private @Getter String messageType="path";
+	private @Getter @Setter IMessageType messageType = MessageType.PATH;
 	private @Getter String messageIdPropertyKey = null;
 	private @Getter String storeMetadataInSessionKey;
 
@@ -239,7 +246,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 		log.trace("Get Raw Message");
 		FS fileSystem=getFileSystem();
 		log.trace("Getting raw message from FS {}", fileSystem.getClass().getSimpleName());
-		try(Stream<F> ds = FileSystemUtils.getFilteredStream(fileSystem, getInputFolder(), getWildcard(), getExcludeWildcard())) {
+		try(Stream<F> ds = FileSystemUtils.getFilteredStream(fileSystem, getInputFolder(), getWildcard(), getExcludeWildcard(), TypeFilter.FILES_ONLY)) {
 			Optional<F> fo = findFirstStableFile(ds);
 			if (fo.isEmpty()) {
 				return null;
@@ -256,7 +263,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 				FileSystemUtils.copyFile(fileSystem, file, getLogFolder(), isOverwrite(), getNumberOfBackups(), isCreateFolders(), false);
 			}
 			return wrapRawMessage(file, originalFilename, threadContext);
-		} catch (IOException | FileSystemException e) {
+		} catch (FileSystemException e) {
 			throw new ListenerException(e);
 		}
 	}
@@ -308,28 +315,14 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 		log.debug("Extract message from raw message");
 		try {
 			F file = rawMessage.getRawMessage();
-			if (StringUtils.isEmpty(getMessageType()) || getMessageType().equalsIgnoreCase("name")) {
-				return new Message(getFileSystem().getName(file));
-			}
-			if (StringUtils.isEmpty(getMessageType()) || getMessageType().equalsIgnoreCase("path")) {
-				return new Message(getFileSystem().getCanonicalName(file));
-			}
-			if (getMessageType().equalsIgnoreCase("contents")) {
-				return getFileSystem().readFile(file, getCharset());
-			}
-			if (getMessageType().equalsIgnoreCase("info")) {
-				return new Message(FileSystemUtils.getFileInfo(getFileSystem(), file, getOutputFormat()));
-			}
 
-			Map<String,Object> attributes = getFileSystem().getAdditionalFileProperties(file);
-			if (attributes != null) {
-				Object result = attributes.get(getMessageType());
-				if (result != null) {
-					return Message.asMessage(result);
-				}
-			}
-			log.warn("no attribute [" + getMessageType() + "] found for file [" + getFileSystem().getName(file) + "]");
-			return null;
+			return switch (getMessageType().name()) {
+				case "NAME" -> new Message(getFileSystem().getName(file));
+				case "PATH" -> new Message(getFileSystem().getCanonicalName(file));
+				case "CONTENTS" -> getFileSystem().readFile(file, getCharset());
+				case "INFO" -> new Message(FileSystemUtils.getFileInfo(getFileSystem(), file, getOutputFormat()));
+				default -> throw new ListenerException("Unknown messageType [" + getMessageType().name() + "]");
+			};
 		} catch (Exception e) {
 			throw new ListenerException(e);
 		}
@@ -348,7 +341,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 					messageId = (String)attributes.get(getMessageIdPropertyKey());
 				}
 				if (StringUtils.isEmpty(messageId)) {
-					log.warn("no attribute ["+getMessageIdPropertyKey()+"] found, will use filename as messageId");
+					log.warn("no attribute [{}] found, will use filename as messageId", getMessageIdPropertyKey());
 				}
 			}
 			if (StringUtils.isEmpty(messageId)) {
@@ -404,7 +397,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 				return wrap(FileSystemUtils.moveFile(getFileSystem(), message.getRawMessage(), getStateFolder(toState), isOverwrite(), getNumberOfBackups(), isCreateFolders(), false), message);
 			}
 			if (toState==ProcessState.INPROCESS && isFileTimeSensitive() && getFileSystem() instanceof IWritableFileSystem) {
-				F movedFile = getFileSystem().moveFile(message.getRawMessage(), getStateFolder(toState), false, true);
+				F movedFile = getFileSystem().moveFile(message.getRawMessage(), getStateFolder(toState), false);
 				String newName = getFileSystem().getCanonicalName(movedFile)+"-"+(DateFormatUtils.format(getFileSystem().getModificationTime(movedFile), DateFormatUtils.FULL_ISO_TIMESTAMP_NO_TZ_FORMATTER).replace(":", "_"));
 				F renamedFile = getFileSystem().toFile(newName);
 				int i=1;
@@ -419,7 +412,7 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 				//noinspection unchecked
 				return wrap(FileSystemUtils.renameFile((IWritableFileSystem<F>) getFileSystem(), movedFile, renamedFile, false, 0), message);
 			}
-			return wrap(getFileSystem().moveFile(message.getRawMessage(), getStateFolder(toState), false, toState==ProcessState.INPROCESS), message);
+			return wrap(getFileSystem().moveFile(message.getRawMessage(), getStateFolder(toState), false), message);
 		} catch (FileSystemException e) {
 			throw new ListenerException("Cannot change processState to ["+toState+"] for ["+getFileSystem().getName(message.getRawMessage())+"]", e);
 		}
@@ -534,14 +527,6 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 	}
 
 	/**
-	 * Determines the contents of the message that is sent to the pipeline. Can be 'name', for the filename, 'path', for the full file path, 'contents' for the contents of the file, 'info' for file information. For any other value, the attributes of the file are searched and used
-	 * @ff.default path
-	 */
-	public void setMessageType(String messageType) {
-		this.messageType = messageType;
-	}
-
-	/**
 	 * If <code>true</code>, the file modification time is used in addition to the filename to determine if a file has been seen before
 	 * @ff.default false
 	 */
@@ -600,4 +585,5 @@ public abstract class FileSystemListener<F, FS extends IBasicFileSystem<F>> impl
 	public void setOutputFormat(DocumentFormat outputFormat) {
 		this.outputFormat = outputFormat;
 	}
+
 }

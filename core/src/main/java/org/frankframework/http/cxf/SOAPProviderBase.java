@@ -1,5 +1,5 @@
 /*
-   Copyright 2018-2021 Nationale-Nederlanden, 2021-2023 WeAreFrank!
+   Copyright 2018-2021 Nationale-Nederlanden, 2021-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -21,33 +21,31 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import javax.annotation.Resource;
-import javax.xml.soap.AttachmentPart;
-import javax.xml.soap.MessageFactory;
-import javax.xml.soap.MimeHeader;
-import javax.xml.soap.SOAPConstants;
-import javax.xml.soap.SOAPException;
-import javax.xml.soap.SOAPMessage;
-import javax.xml.soap.SOAPPart;
-import javax.xml.ws.BindingType;
-import javax.xml.ws.Provider;
-import javax.xml.ws.ServiceMode;
-import javax.xml.ws.WebServiceContext;
-import javax.xml.ws.WebServiceException;
-import javax.xml.ws.WebServiceProvider;
-import javax.xml.ws.handler.MessageContext;
+import jakarta.annotation.Resource;
+import jakarta.xml.soap.AttachmentPart;
+import jakarta.xml.soap.MessageFactory;
+import jakarta.xml.soap.MimeHeader;
+import jakarta.xml.soap.SOAPConstants;
+import jakarta.xml.soap.SOAPException;
+import jakarta.xml.soap.SOAPMessage;
+import jakarta.xml.soap.SOAPPart;
+import jakarta.xml.ws.BindingType;
+import jakarta.xml.ws.Provider;
+import jakarta.xml.ws.ServiceMode;
+import jakarta.xml.ws.WebServiceContext;
+import jakarta.xml.ws.WebServiceException;
+import jakarta.xml.ws.WebServiceProvider;
+import jakarta.xml.ws.handler.MessageContext;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.cxf.binding.soap.SoapBindingConstants;
 import org.apache.logging.log4j.Logger;
-import org.springframework.util.MimeType;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.xml.sax.SAXException;
-
 import org.frankframework.core.ListenerException;
 import org.frankframework.core.PipeLineSession;
+import org.frankframework.http.mime.MultipartUtils;
+import org.frankframework.http.mime.MultipartUtils.MultipartMessages;
 import org.frankframework.stream.Message;
+import org.frankframework.util.AppConstants;
 import org.frankframework.util.DomBuilderException;
 import org.frankframework.util.LogUtil;
 import org.frankframework.util.MessageDataSource;
@@ -55,6 +53,10 @@ import org.frankframework.util.MessageUtils;
 import org.frankframework.util.UUIDUtil;
 import org.frankframework.util.XmlBuilder;
 import org.frankframework.util.XmlUtils;
+import org.springframework.util.MimeType;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.xml.sax.SAXException;
 
 /**
  * Base class for handling JAX-WS SOAP messages
@@ -64,13 +66,15 @@ import org.frankframework.util.XmlUtils;
  *
  */
 @WebServiceProvider
-@ServiceMode(value=javax.xml.ws.Service.Mode.MESSAGE)
-@BindingType(javax.xml.ws.soap.SOAPBinding.SOAP12HTTP_BINDING)
+@ServiceMode(value=jakarta.xml.ws.Service.Mode.MESSAGE)
+@BindingType(jakarta.xml.ws.soap.SOAPBinding.SOAP12HTTP_BINDING)
 public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 	protected Logger log = LogUtil.getLogger(this);
 
 	private String attachmentXmlSessionKey = null;
 	private Map<String, MessageFactory> factory = new HashMap<>();
+
+	protected boolean multipartBackwardsCompatibilityMode = AppConstants.getInstance().getBoolean("WebServiceListener.backwardsCompatibleMultipartNotation", false);
 
 	// WebServiceProviders must have a default public constructor
 	public SOAPProviderBase() {
@@ -109,37 +113,19 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 			}
 			else {
 				// Make mime headers in request available as session key
-				@SuppressWarnings("unchecked")
 				Iterator<MimeHeader> mimeHeaders = request.getMimeHeaders().getAllHeaders();
-				String mimeHeadersXml = getMimeHeadersXml(mimeHeaders).toXML();
+				String mimeHeadersXml = getMimeHeadersXml(mimeHeaders).asXmlString();
 				pipelineSession.put("mimeHeaders", mimeHeadersXml);
 
 				// Make attachments in request (when present) available as session keys
-				int i = 1;
-				XmlBuilder attachments = new XmlBuilder("attachments");
-				@SuppressWarnings("unchecked")
-				Iterator<AttachmentPart> attachmentParts = request.getAttachments();
-				while (attachmentParts.hasNext()) {
-					try {
-						AttachmentPart attachmentPart = attachmentParts.next();
-
-						XmlBuilder attachment = new XmlBuilder("attachment");
-						attachments.addSubElement(attachment);
-						XmlBuilder sessionKey = new XmlBuilder("sessionKey");
-						sessionKey.setValue("attachment" + i);
-						attachment.addSubElement(sessionKey);
-						pipelineSession.put("attachment" + i, MessageUtils.parse(attachmentPart));
-						log.debug(getLogPrefix(messageId)+"adding attachment [attachment" + i+"] to session");
-
-						@SuppressWarnings("unchecked")
-						Iterator<MimeHeader> attachmentMimeHeaders = attachmentPart.getAllMimeHeaders();
-						attachment.addSubElement(getMimeHeadersXml(attachmentMimeHeaders));
-					} catch (SOAPException e) {
-						log.warn("Could not store attachment in session key", e);
-					}
-					i++;
+				if(multipartBackwardsCompatibilityMode) {
+					handleIncomingAttachmentsLegacy(request.getAttachments(), pipelineSession);
+				} else {
+					MultipartMessages parts = MultipartUtils.parseMultipart(request.getAttachments());
+					parts.messages().forEach(pipelineSession::put);
+					pipelineSession.put(MultipartUtils.MULTIPART_ATTACHMENTS_SESSION_KEY, parts.multipartXml());
 				}
-				pipelineSession.put("attachments", attachments.toXML());
+
 
 				// Transform SOAP message to string
 				String contentType = (String) webServiceContext.getMessageContext().get("Content-Type");
@@ -152,7 +138,7 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 					log.error("unable to determine SOAP URI NS type, falling back to SOAP 1.1", e);
 				}
 
-				log.debug(getLogPrefix(messageId)+"transforming from SOAP message");
+				log.debug("{}transforming from SOAP message", getLogPrefix(messageId));
 				pipelineSession.put("soapProtocol", soapProtocol);
 				if(soapProtocol.equals(SOAPConstants.SOAP_1_1_PROTOCOL)) {
 					String soapAction = (String) webServiceContext.getMessageContext().get(SoapBindingConstants.SOAP_ACTION);
@@ -163,7 +149,7 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 						if(StringUtils.isNotEmpty(action)) {
 							pipelineSession.put(SoapBindingConstants.SOAP_ACTION, action);
 						} else {
-							log.warn(getLogPrefix(messageId)+"no SOAPAction found!");
+							log.warn("{}no SOAPAction found!", getLogPrefix(messageId));
 						}
 					}
 				}
@@ -174,7 +160,7 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 				pipelineSession.put(PipeLineSession.HTTP_RESPONSE_KEY, webServiceContext.getMessageContext().get(MessageContext.SERVLET_RESPONSE));
 
 				try {
-					log.debug(getLogPrefix(messageId)+"processing message");
+					log.debug("{}processing message", getLogPrefix(messageId));
 					response = processRequest(soapMessage, pipelineSession);
 				} catch (ListenerException e) {
 					String m = "Could not process SOAP message: " + e.getMessage();
@@ -184,12 +170,12 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 			}
 
 			// Transform result string to SOAP message
-			log.debug(getLogPrefix(messageId)+"transforming to SOAP message");
+			log.debug("{}transforming to SOAP message", getLogPrefix(messageId));
 			SOAPMessage soapMessage = createSOAPMessage(response, soapProtocol);
 
 			try {
 				String multipartXml = pipelineSession.getString(attachmentXmlSessionKey);
-				log.debug(getLogPrefix(messageId)+"building multipart message with MultipartXmlSessionKey ["+multipartXml+"]");
+				log.debug("{}building multipart message with MultipartXmlSessionKey [{}]", getLogPrefix(messageId), multipartXml);
 				if (StringUtils.isNotEmpty(multipartXml)) {
 					Element partsElement;
 					try {
@@ -202,7 +188,7 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 					}
 					Collection<Node> parts = XmlUtils.getChildTags(partsElement, "part");
 					if (parts.isEmpty()) {
-						log.warn(getLogPrefix(messageId)+"no part(s) in multipart xml [" + multipartXml + "]");
+						log.warn("{}no part(s) in multipart xml [{}]", getLogPrefix(messageId), multipartXml);
 					}
 					else {
 						for (final Node part : parts) {
@@ -242,6 +228,34 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 	}
 
 	/**
+	 * This method uses a custom / different way to storing the multipart attachments in the PipeLineSession
+	 */
+	private void handleIncomingAttachmentsLegacy(Iterator<AttachmentPart> attachmentParts, PipeLineSession pipelineSession) {
+		int i = 1;
+		XmlBuilder attachments = new XmlBuilder("attachments");
+		while (attachmentParts.hasNext()) {
+			try {
+				AttachmentPart attachmentPart = attachmentParts.next();
+
+				XmlBuilder attachment = new XmlBuilder("attachment");
+				attachments.addSubElement(attachment);
+				XmlBuilder sessionKey = new XmlBuilder("sessionKey");
+				sessionKey.setValue("attachment" + i);
+				attachment.addSubElement(sessionKey);
+				pipelineSession.put("attachment" + i, MessageUtils.parse(attachmentPart));
+				log.debug("adding attachment [attachment{}] to session", i);
+
+				Iterator<MimeHeader> attachmentMimeHeaders = attachmentPart.getAllMimeHeaders();
+				attachment.addSubElement(getMimeHeadersXml(attachmentMimeHeaders));
+			} catch (SOAPException e) {
+				log.warn("Could not store attachment in session key", e);
+			}
+			i++;
+		}
+		pipelineSession.put("attachments", attachments.asXmlString());
+	}
+
+	/**
 	 * Create a MessageFactory singleton
 	 * @param soapProtocol see {@link SOAPConstants} for possible values
 	 * @return previously initialized or newly created MessageFactory
@@ -249,11 +263,11 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 	 */
 	private synchronized MessageFactory getMessageFactory(String soapProtocol) throws SOAPException {
 		if(!factory.containsKey(soapProtocol)) {
-			log.info("creating new MessageFactory for soapProtocol ["+soapProtocol+"]");
+			log.info("creating new MessageFactory for soapProtocol [{}]", soapProtocol);
 			factory.put(soapProtocol, MessageFactory.newInstance(soapProtocol));
 		}
 
-		log.debug("using cached MessageFactory for soapProtocol ["+soapProtocol+"]");
+		log.debug("using cached MessageFactory for soapProtocol [{}]", soapProtocol);
 		return factory.get(soapProtocol);
 	}
 
@@ -297,7 +311,6 @@ public abstract class SOAPProviderBase implements Provider<SOAPMessage> {
 		return mimeType.getParameter("action");
 	}
 
-	@SuppressWarnings("unchecked")
 	private Message parseSOAPMessage(SOAPMessage soapMessage, String contentType) {
 		org.frankframework.stream.MessageContext context = MessageUtils.getContext(soapMessage.getMimeHeaders().getAllHeaders());
 		if(StringUtils.isNotEmpty(contentType)) {

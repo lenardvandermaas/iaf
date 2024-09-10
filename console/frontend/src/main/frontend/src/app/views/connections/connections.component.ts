@@ -21,11 +21,11 @@ type Connections = {
   styleUrls: ['./connections.component.scss'],
 })
 export class ConnectionsComponent implements OnInit, AfterViewInit {
-  @ViewChild(DataTableDirective, { static: false })
-  datatableElement!: DataTableDirective;
-  dtOptions: ADTSettings = {};
-  // truncateLengthOptions = [50, 100, 200];
-  minimalTruncateLength = 100;
+  @ViewChild(DataTableDirective, { static: false }) datatableElement!: DataTableDirective;
+
+  protected dtOptions: ADTSettings = {};
+
+  private minimalTruncateLength = 100;
 
   constructor(
     private http: HttpClient,
@@ -45,16 +45,14 @@ export class ConnectionsComponent implements OnInit, AfterViewInit {
         { data: 'direction' },
       ],
       ajax: (data, callback): void => {
-        this.http
-          .get<Connections>(`${this.appService.absoluteApiPath}connections`)
-          .subscribe((response) => {
-            callback({
-              ...response,
-              draw: (data as Record<string, unknown>)['draw'],
-              recordsTotal: response.data.length,
-              recordsFiltered: response.data.length,
-            });
+        this.http.get<Connections>(`${this.appService.absoluteApiPath}connections`).subscribe((response) => {
+          callback({
+            ...response,
+            draw: (data as Record<string, unknown>)['draw'],
+            recordsTotal: response.data.length,
+            recordsFiltered: response.data.length,
           });
+        });
       },
       initComplete: (): undefined => {
         this.datatableElement.dtInstance.then((dtInstance: DataTables.Api) => {
@@ -85,11 +83,7 @@ export class ConnectionsComponent implements OnInit, AfterViewInit {
         {
           targets: [0, 1, 3],
           render: (data, type): unknown => {
-            if (
-              type === 'display' &&
-              typeof data == 'string' &&
-              data.length > this.minimalTruncateLength
-            ) {
+            if (type === 'display' && typeof data == 'string' && data.length > this.minimalTruncateLength) {
               const title = data.replaceAll('"', '&quot;');
               const leftTrancate = data.slice(0, 15);
               const rightTrancate = data.slice(-15);
@@ -121,14 +115,6 @@ export class ConnectionsComponent implements OnInit, AfterViewInit {
             column.search(input['value']).draw();
           }
         });
-      });
-    });
-  }
-
-  updateTable(): void {
-    this.datatableElement.dtInstance.then((table) => {
-      table.columns([0, 1, 3]).every(function () {
-        this.search('').draw();
       });
     });
   }

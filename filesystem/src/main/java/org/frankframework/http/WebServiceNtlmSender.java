@@ -19,8 +19,14 @@ package org.frankframework.http;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 
-import javax.servlet.http.HttpServletResponse;
-
+import jakarta.annotation.Nonnull;
+import jakarta.servlet.http.HttpServletResponse;
+import jcifs.ntlmssp.NtlmFlags;
+import jcifs.ntlmssp.Type1Message;
+import jcifs.ntlmssp.Type2Message;
+import jcifs.ntlmssp.Type3Message;
+import jcifs.util.Base64;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
@@ -43,14 +49,6 @@ import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.params.HttpParams;
 import org.apache.http.util.EntityUtils;
-
-import jcifs.ntlmssp.NtlmFlags;
-import jcifs.ntlmssp.Type1Message;
-import jcifs.ntlmssp.Type2Message;
-import jcifs.ntlmssp.Type3Message;
-import jcifs.util.Base64;
-import lombok.Getter;
-
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarning;
 import org.frankframework.core.HasPhysicalDestination;
@@ -118,6 +116,7 @@ public class WebServiceNtlmSender extends SenderWithParametersBase implements Ha
 	}
 
 	private class NTLMSchemeFactory implements AuthSchemeFactory {
+		@Override
 		public AuthScheme newInstance(final HttpParams params) {
 			return new NTLMScheme(new JCIFSEngine());
 		}
@@ -155,42 +154,42 @@ public class WebServiceNtlmSender extends SenderWithParametersBase implements Ha
 
 
 	@Override
-	public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+	public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		String result = null;
 		HttpPost httpPost = new HttpPost(getUrl());
 		try {
 			StringEntity se = new StringEntity(message.asString());
 			httpPost.setEntity(se);
 			if (StringUtils.isNotEmpty(getContentType())) {
-				log.debug(getLogPrefix() + "setting Content-Type header [" + getContentType() + "]");
+				log.debug("setting Content-Type header [{}]", getContentType());
 				httpPost.addHeader("Content-Type", getContentType());
 			}
 			if (StringUtils.isNotEmpty(getSoapAction())) {
-				log.debug(getLogPrefix() + "setting SOAPAction header [" + getSoapAction() + "]");
+				log.debug("setting SOAPAction header [{}]", getSoapAction());
 				httpPost.addHeader("SOAPAction", getSoapAction());
 			}
-			log.debug(getLogPrefix() + "executing method");
+			log.debug("executing method");
 			HttpResponse httpresponse = httpClient.execute(httpPost);
-			log.debug(getLogPrefix() + "executed method");
+			log.debug("executed method");
 			StatusLine statusLine = httpresponse.getStatusLine();
 			if (statusLine == null) {
-				throw new SenderException(getLogPrefix() + "no statusline found");
+				throw new SenderException("no statusline found");
 			} else {
 				int statusCode = statusLine.getStatusCode();
 				String statusMessage = statusLine.getReasonPhrase();
 				if (statusCode == HttpServletResponse.SC_OK) {
-					log.debug(getLogPrefix() + "status code [" + statusCode + "] message [" + statusMessage + "]");
+					log.debug("status code [{}] message [{}]", statusCode, statusMessage);
 				} else {
-					throw new SenderException(getLogPrefix() + "status code [" + statusCode + "] message [" + statusMessage + "]");
+					throw new SenderException("status code [" + statusCode + "] message [" + statusMessage + "]");
 				}
 			}
 			HttpEntity httpEntity = httpresponse.getEntity();
 			if (httpEntity == null) {
-				log.warn(getLogPrefix() + "no response found");
+				log.warn("no response found");
 			} else {
-				log.debug(getLogPrefix() + "response content length [" + httpEntity.getContentLength() + "]");
+				log.debug("response content length [{}]", httpEntity.getContentLength());
 				result = EntityUtils.toString(httpEntity);
-				log.debug(getLogPrefix() + "retrieved result [" + result + "]");
+				log.debug("retrieved result [{}]", result);
 			}
 		} catch (SocketTimeoutException | ConnectTimeoutException e) {
 			throw new TimeoutException(e);

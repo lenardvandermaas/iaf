@@ -90,8 +90,7 @@ public class SendGridSender extends MailSenderBase implements HasKeystore, HasTr
 	}
 
 	@Override
-	public String sendEmail(MailSessionBase mailSession) throws SenderException {
-		String result;
+	public void sendEmail(MailSessionBase mailSession) throws SenderException {
 		Mail mail;
 
 		try {
@@ -107,18 +106,12 @@ public class SendGridSender extends MailSenderBase implements HasKeystore, HasTr
 				request.setEndpoint("mail/send");
 				request.setBody(mail.build());
 				Response response = sendGrid.api(request);
-				result = response.getBody();
-				log.debug("Mail send result: [{}]", result);
-				return result;
+				log.debug("SendGrid mail result: [{}]", response::getBody);
 			} catch (Exception e) {
-				throw new SenderException(
-						getLogPrefix() + "exception sending mail with subject [" + mail.getSubject() + "]", e);
+				throw new SenderException("exception sending mail with subject [" + mail.getSubject() + "]", e);
 			}
 		} else {
-			if (log.isDebugEnabled()) {
-				log.debug("No recipients left after whitelisting, mail is not send");
-			}
-			return "Mail not send, no recipients left after whitelisting";
+			log.debug("no recipients left after whitelisting, mail is not send");
 		}
 	}
 
@@ -156,7 +149,7 @@ public class SendGridSender extends MailSenderBase implements HasKeystore, HasTr
 	 * Sets header of mail object if header exists
 	 * @param mail {@link Mail} address to send to
 	 * @param personalization {@link Personalization} options of the mail
-	 * @param headers Mail headers, as {@link Collection<Node>}
+	 * @param headers Mail headers, as {@link Collection}
 	 */
 	private void setHeader(Mail mail, Personalization personalization, Collection<Node> headers) {
 		if (headers != null && !headers.isEmpty()) {

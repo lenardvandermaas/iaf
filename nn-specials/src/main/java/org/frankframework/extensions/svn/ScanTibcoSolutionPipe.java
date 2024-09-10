@@ -28,7 +28,6 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
 
 import org.apache.commons.lang3.StringUtils;
-
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.PipeRunException;
@@ -110,10 +109,7 @@ public class ScanTibcoSolutionPipe extends FixedForwardPipe {
 						// skipDir(xmlStreamWriter, token);
 					} else {
 						String newUrl = cUrl + token;
-						boolean dir = false;
-						if (token.endsWith("/")) {
-							dir = true;
-						}
+						boolean dir = token.endsWith("/");
 						if (dir) {
 							xmlStreamWriter.writeStartElement("dir");
 							xmlStreamWriter.writeAttribute("name",
@@ -416,7 +412,8 @@ public class ScanTibcoSolutionPipe extends FixedForwardPipe {
 			httpSender.setXhtml(true);
 			httpSender.configure();
 			httpSender.open();
-			try (Message result = httpSender.sendMessageOrThrow(Message.nullMessage(), null)) {
+			try (PipeLineSession session = new PipeLineSession();
+				Message result = httpSender.sendMessageOrThrow(Message.nullMessage(), session)) {
 				return result.asString();
 			}
 		} finally {

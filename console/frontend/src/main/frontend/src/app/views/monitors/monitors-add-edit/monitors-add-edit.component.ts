@@ -1,6 +1,5 @@
 import { Component, OnInit } from '@angular/core';
 import { Event, MonitorsService, Trigger } from '../monitors.service';
-import { AppService } from 'src/app/app.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { combineLatestWith } from 'rxjs';
 
@@ -15,15 +14,12 @@ type EventSource = {
   styleUrls: ['./monitors-add-edit.component.scss'],
 })
 export class MonitorsAddEditComponent implements OnInit {
-  loading: boolean = true;
-  componentLoading = true;
-  selectedConfiguration: string = '';
-  monitor: string = '';
-  events: Record<string, Event> = {};
-  eventsOptions: string[] = [];
-  severities: string[] = [];
-  triggerId: number = -1;
-  trigger: Trigger = {
+  protected componentLoading = true;
+  protected selectedConfiguration: string = '';
+  protected monitor: string = '';
+  protected eventsOptions: string[] = [];
+  protected severities: string[] = [];
+  protected trigger: Trigger = {
     name: '',
     severity: '',
     filter: '',
@@ -36,71 +32,62 @@ export class MonitorsAddEditComponent implements OnInit {
     events: [],
     adapters: [],
   };
-  eventSources: Record<string, EventSource[]> = {};
-  disabled: boolean = false;
-  pageTitle = '';
+  protected disabled: boolean = false;
+  protected pageTitle = '';
+
+  private triggerId: number = -1;
+  private events: Record<string, Event> = {};
+  private eventSources: Record<string, EventSource[]> = {};
 
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private appService: AppService,
     private monitorsService: MonitorsService,
   ) {}
 
   ngOnInit(): void {
-    this.appService.loading$.subscribe(() => (this.loading = false));
     this.route.title.subscribe((title) => {
       this.pageTitle = title ?? '';
     });
 
-    this.route.paramMap
-      .pipe(combineLatestWith(this.route.queryParamMap))
-      .subscribe(([parameters, queryParameters]) => {
-        if (queryParameters.has('configuration')) {
-          this.selectedConfiguration = queryParameters.get('configuration')!;
-          this.monitor = parameters.get('monitor')!;
-          const triggerParameter = parameters.get('trigger')!;
-          this.triggerId = triggerParameter === 'new' ? -1 : +triggerParameter;
+    this.route.paramMap.pipe(combineLatestWith(this.route.queryParamMap)).subscribe(([parameters, queryParameters]) => {
+      if (queryParameters.has('configuration')) {
+        this.selectedConfiguration = queryParameters.get('configuration')!;
+        this.monitor = parameters.get('monitor')!;
+        const triggerParameter = parameters.get('trigger')!;
+        this.triggerId = triggerParameter === 'new' ? -1 : +triggerParameter;
+      } else {
+        this.router.navigate(['/monitors']);
+      }
+    });
 
-          this.monitorsService
-            .getTrigger(
-              this.selectedConfiguration,
-              this.monitor,
-              this.triggerId,
-            )
-            .subscribe({
-              next: (data) => {
-                this.eventsOptions = Object.keys(data.events).sort();
-                this.events = data.events;
-                this.severities = data.severities;
-                if (data.trigger) this.trigger = data.trigger;
-                this.calculateEventSources();
+    this.monitorsService.getTrigger(this.selectedConfiguration, this.monitor, this.triggerId).subscribe({
+      next: (data) => {
+        this.eventsOptions = Object.keys(data.events).sort();
+        this.events = data.events;
+        this.severities = data.severities;
+        if (data.trigger) this.trigger = data.trigger;
+        this.calculateEventSources();
 
-                if (data.trigger && data.trigger.sources) {
-                  const sources = { ...data.trigger.sources };
-                  this.trigger.changedSources = [];
-                  this.trigger.adapters = [];
+        if (data.trigger && data.trigger.sources) {
+          const sources = { ...data.trigger.sources };
+          this.trigger.changedSources = [];
+          this.trigger.adapters = [];
 
-                  for (const adapter in sources) {
-                    if (data.trigger.filter == 'SOURCE') {
-                      for (const index in sources[adapter]) {
-                        this.trigger.changedSources.push(
-                          `${adapter}$$${sources[adapter][index]}`,
-                        );
-                      }
-                    } else {
-                      this.trigger.adapters.push(adapter);
-                    }
-                  }
-                }
-                this.componentLoading = false;
-              },
-              error: () => this.navigateBack(),
-            });
-        } else {
-          this.router.navigate(['/monitors']);
+          for (const adapter in sources) {
+            if (data.trigger.filter == 'SOURCE') {
+              for (const index in sources[adapter]) {
+                this.trigger.changedSources.push(`${adapter}$$${sources[adapter][index]}`);
+              }
+            } else {
+              this.trigger.adapters.push(adapter);
+            }
+          }
         }
-      });
+        this.componentLoading = false;
+      },
+      error: () => this.navigateBack(),
+    });
   }
 
   navigateBack(): void {
@@ -167,23 +154,13 @@ export class MonitorsAddEditComponent implements OnInit {
 
     if (this.triggerId && this.triggerId > -1) {
       this.monitorsService
-        .putTriggerUpdate(
-          this.selectedConfiguration,
-          this.monitor,
-          this.triggerId,
-          trigger,
-        )
+        .putTriggerUpdate(this.selectedConfiguration, this.monitor, this.triggerId, trigger)
         .subscribe(() => {
           this.navigateBack();
         });
     } else {
       this.monitorsService
-        .postTrigger(
-          this.selectedConfiguration,
-          this.monitor,
-          this.triggerId,
-          trigger,
-        )
+        .postTrigger(this.selectedConfiguration, this.monitor, this.triggerId, trigger)
         .subscribe(() => {
           this.navigateBack();
         });

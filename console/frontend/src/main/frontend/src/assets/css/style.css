@@ -332,7 +332,7 @@ body.mini-navbar .navbar-default .nav > li > .nav-second-level li a {
   padding: 15px;
   text-align: center;
 }
-.logo-element object {
+.logo-element img {
   max-height: 100%;
   max-width: 100%;
 }
@@ -1981,7 +1981,7 @@ div.dt-button-info {
 .single-line {
   background-color: #ffffff;
   background-image: none;
-  border: 1px solid #e5e6e7;
+  border: 1px solid #bdbfc2;
   border-radius: 1px;
   color: inherit;
   display: block;
@@ -6024,6 +6024,9 @@ body.body-small .vote-icon {
 }
 .metismenu .fa-sitemap {
   color: #00abff;
+}
+.metismenu .fa-flag {
+  color: #fe41ff;
 }
 /*
  *  Usage:

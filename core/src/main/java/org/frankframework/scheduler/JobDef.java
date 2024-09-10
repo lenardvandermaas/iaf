@@ -15,6 +15,9 @@
 */
 package org.frankframework.scheduler;
 
+import io.micrometer.core.instrument.DistributionSummary;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.Configuration;
 import org.frankframework.configuration.ConfigurationException;
@@ -30,10 +33,6 @@ import org.frankframework.util.MessageKeeper;
 import org.frankframework.util.MessageKeeper.MessageKeeperLevel;
 import org.quartz.JobDetail;
 import org.springframework.context.ApplicationContext;
-
-import io.micrometer.core.instrument.DistributionSummary;
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * Definition / configuration of scheduler jobs.
@@ -70,49 +69,49 @@ import lombok.Setter;
  *   <tr>
  *     <td align="left"><code>Seconds</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>0-59</code></td>
+ *     <td align="left">0-59</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * /</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Minutes</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>0-59</code></td>
+ *     <td align="left">0-59</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * /</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Hours</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>0-23</code></td>
+ *     <td align="left">0-23</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * /</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Day-of-month</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>1-31</code></td>
+ *     <td align="left">1-31</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * ? / L C</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Month</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>1-12 or JAN-DEC</code></td>
+ *     <td align="left">1-12 or JAN-DEC</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * /</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Day-of-Week</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>1-7 or SUN-SAT</code></td>
+ *     <td align="left">1-7 or SUN-SAT</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * ? / L C #</code></td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>Year (Optional)</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>empty, 1970-2099</code></td>
+ *     <td align="left">>empty, 1970-2099</td>
  *     <td align="left">&nbsp;</th>
  *     <td align="left"><code>, - * /</code></td>
  *   </tr>
@@ -180,87 +179,87 @@ import lombok.Setter;
  *   <tr>
  *     <td align="left"><code>"0 0 12 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 12pm (noon) every day</code></td>
+ *     <td align="left">Fire at 12pm (noon) every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * *"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am every day</code></td>
+ *     <td align="left">Fire at 10:15am every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am every day</code></td>
+ *     <td align="left">Fire at 10:15am every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 * * ? *"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am every day</code></td>
+ *     <td align="left">Fire at 10:15am every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 * * ? 2005"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am every day during the year 2005</code></td>
+ *     <td align="left">Fire at 10:15am every day during the year 2005</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 * 14 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire every minute starting at 2pm and ending at 2:59pm, every day</code></td>
+ *     <td align="left">Fire every minute starting at 2pm and ending at 2:59pm, every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 0/5 14 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire every 5 minutes starting at 2pm and ending at 2:55pm, every day</code></td>
+ *     <td align="left">Fire every 5 minutes starting at 2pm and ending at 2:55pm, every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 0/5 14,18 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire every 5 minutes starting at 2pm and ending at 2:55pm, AND fire every 5 minutes starting at 6pm and ending at 6:55pm, every day</code></td>
+ *     <td align="left">Fire every 5 minutes starting at 2pm and ending at 2:55pm, AND fire every 5 minutes starting at 6pm and ending at 6:55pm, every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 0-5 14 * * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire every minute starting at 2pm and ending at 2:05pm, every day</code></td>
+ *     <td align="left">Fire every minute starting at 2pm and ending at 2:05pm, every day</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 10,44 14 ? 3 WED"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 2:10pm and at 2:44pm every Wednesday in the month of March.</code></td>
+ *     <td align="left">Fire at 2:10pm and at 2:44pm every Wednesday in the month of March.</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * MON-FRI"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am every Monday, Tuesday, Wednesday, Thursday and Friday</code></td>
+ *     <td align="left">Fire at 10:15am every Monday, Tuesday, Wednesday, Thursday and Friday</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 15 * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on the 15th day of every month</code></td>
+ *     <td align="left">Fire at 10:15am on the 15th day of every month</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 L * ?"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on the last day of every month</code></td>
+ *     <td align="left">Fire at 10:15am on the last day of every month</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * 6L"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on the last Friday of every month</code></td>
+ *     <td align="left">Fire at 10:15am on the last Friday of every month</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * 6L"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on the last Friday of every month</code></td>
+ *     <td align="left">Fire at 10:15am on the last Friday of every month</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * 6L 2002-2005"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on every last friday of every month during the years 2002, 2003, 2004 and 2005</code></td>
+ *     <td align="left">Fire at 10:15am on every last friday of every month during the years 2002, 2003, 2004 and 2005</td>
  *   </tr>
  *   <tr>
  *     <td align="left"><code>"0 15 10 ? * 6#3"</code></td>
  *     <td align="left">&nbsp;</th>
- *     <td align="left"><code>Fire at 10:15am on the third Friday of every month</code></td>
+ *     <td align="left">Fire at 10:15am on the third Friday of every month</td>
  *   </tr>
  * </table>
  * </p>
@@ -289,7 +288,7 @@ import lombok.Setter;
  */
 public abstract class JobDef extends TransactionAttributes implements IConfigurationAware, IJob {
 
-	private @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
+	private final @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
 	private @Getter @Setter ApplicationContext applicationContext;
 	private @Setter MetricsInitializer configurationMetrics;
 	private @Getter boolean configured;
@@ -360,7 +359,7 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 		if (!incrementCountThreads()) {
 			String msg = "maximum number of threads that may execute concurrently [" + getNumThreads() + "] is exceeded, the processing of this thread will be aborted";
 			getMessageKeeper().add(msg, MessageKeeperLevel.ERROR);
-			log.error(getLogPrefix()+msg);
+			log.error("{}{}", getLogPrefix(), msg);
 			return;
 		}
 		try {
@@ -371,7 +370,7 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 						objectId = getLocker().acquire(getMessageKeeper());
 					} catch (Exception e) {
 						getMessageKeeper().add(e.getMessage(), MessageKeeperLevel.ERROR);
-						log.error(getLogPrefix()+e.getMessage());
+						log.error("{}{}", getLogPrefix(), e.getMessage());
 					}
 					if (objectId!=null) {
 						TimeoutGuard tg = new TimeoutGuard("Job "+getName());
@@ -380,7 +379,7 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 							runJob();
 						} finally {
 							if (tg.cancel()) {
-								log.error(getLogPrefix()+"thread has been interrupted");
+								log.error("{}thread has been interrupted", getLogPrefix());
 							}
 						}
 						try {
@@ -388,7 +387,7 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 						} catch (Exception e) {
 							String msg = "error while removing lock: " + e.getMessage();
 							getMessageKeeper().add(msg, MessageKeeperLevel.WARN);
-							log.warn(getLogPrefix()+msg);
+							log.warn("{}{}", getLogPrefix(), msg);
 						}
 					} else {
 						getMessageKeeper().add("unable to acquire lock ["+getName()+"] did not run");
@@ -414,7 +413,7 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 		} catch (Exception e) {
 			String msg = "error while executing job ["+this+"] (as part of scheduled job execution): " + e.getMessage();
 			getMessageKeeper().add(msg, MessageKeeperLevel.ERROR);
-			log.error(getLogPrefix()+msg, e);
+			log.error("{}{}", getLogPrefix(), msg, e);
 		}
 
 		long endTime = System.currentTimeMillis();
@@ -434,10 +433,10 @@ public abstract class JobDef extends TransactionAttributes implements IConfigura
 	@Override
 	public String toString() {
 		StringBuilder builder = new StringBuilder(this.getClass().getSimpleName());
-		if(name != null) builder.append(" name ["+name+"]");
-		if(jobGroup != null) builder.append(" jobGroup ["+jobGroup+"]");
-		if(cronExpression != null) builder.append(" cronExpression ["+cronExpression+"]");
-		if(interval > -1) builder.append(" interval ["+interval+"]");
+		if (name != null) builder.append(" name [").append(name).append("]");
+		if (jobGroup != null) builder.append(" jobGroup [").append(jobGroup).append("]");
+		if (cronExpression != null) builder.append(" cronExpression [").append(cronExpression).append("]");
+		if (interval > -1) builder.append(" interval [").append(interval).append("]");
 		return builder.toString();
 	}
 

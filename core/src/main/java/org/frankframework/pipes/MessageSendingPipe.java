@@ -23,9 +23,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.annotation.Nonnull;
 import javax.xml.transform.TransformerException;
 
+import io.micrometer.core.instrument.DistributionSummary;
+import jakarta.annotation.Nonnull;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.CloseableThreadContext;
 import org.apache.logging.log4j.Logger;
@@ -62,7 +66,7 @@ import org.frankframework.core.TimeoutException;
 import org.frankframework.errormessageformatters.ErrorMessageFormatter;
 import org.frankframework.jdbc.DirectQuerySender;
 import org.frankframework.jdbc.MessageStoreSender;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.processors.ListenerProcessor;
 import org.frankframework.processors.PipeProcessor;
@@ -81,11 +85,6 @@ import org.frankframework.util.TransformerPool;
 import org.frankframework.util.TransformerPool.OutputType;
 import org.frankframework.util.XmlUtils;
 import org.xml.sax.SAXException;
-
-import io.micrometer.core.instrument.DistributionSummary;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.SneakyThrows;
 
 /**
  * Sends a message using a {@link ISender sender} and optionally receives a reply from the same sender, or
@@ -220,7 +219,7 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 			// copying of pipe parameters to sender must be done at configure(), not by overriding addParam()
 			// because sender might not have been set when addPipe() is called.
 			if (getParameterList()!=null && getSender() instanceof ISenderWithParameters) {
-				for (Parameter p:getParameterList()) {
+				for (IParameter p:getParameterList()) {
 					if (!p.getName().equals(STUBFILENAME)) {
 						((ISenderWithParameters)getSender()).addParameter(p);
 					}
@@ -558,7 +557,7 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 		correlationID = logToMessageLog(input, session, originalMessage, messageID, correlationID);
 
 		if (getListener() != null) {
-			Message result = Message.asMessage(listenerProcessor.getMessage(getListener(), correlationID, session));
+			Message result = listenerProcessor.getMessage(getListener(), correlationID, session);
 			sendResult.setResult(result);
 		}
 		if (Message.isNull(sendResult.getResult())) {
@@ -581,9 +580,9 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 		String messageTrail="no audit trail";
 		if (auditTrailTp!=null) {
 			if (isUseInputForExtract()){
-				messageTrail=auditTrailTp.transform(originalMessage,null);
+				messageTrail=auditTrailTp.transform(originalMessage);
 			} else {
-				messageTrail=auditTrailTp.transform(input,null);
+				messageTrail=auditTrailTp.transform(input);
 			}
 		} else {
 			if (StringUtils.isNotEmpty(getAuditTrailSessionKey())) {
@@ -600,9 +599,9 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 				correlationID =correlationIDTp.transform(sourceString,null);
 			} else {
 				if (isUseInputForExtract()) {
-					correlationID =correlationIDTp.transform(originalMessage,null);
+					correlationID =correlationIDTp.transform(originalMessage);
 				} else {
-					correlationID =correlationIDTp.transform(input,null);
+					correlationID =correlationIDTp.transform(input);
 				}
 			}
 			if (StringUtils.isEmpty(correlationID)) {
@@ -612,9 +611,9 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 		String label=null;
 		if (labelTp!=null) {
 			if (isUseInputForExtract()) {
-				label=labelTp.transform(originalMessage,null);
+				label=labelTp.transform(originalMessage);
 			} else {
-				label=labelTp.transform(input,null);
+				label=labelTp.transform(input);
 			}
 		}
 		messageLog.storeMessage(storedMessageID, correlationID,new Date(),messageTrail,label, new MessageWrapper(input, storedMessageID, correlationID));
@@ -707,14 +706,14 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 		if (outputValidator != null) {
 			log.debug("validating response");
 			PipeRunResult validationResult;
-			validationResult = pipeProcessor.processPipe(getPipeLine(), outputValidator, Message.asMessage(output), session);
+			validationResult = pipeProcessor.processPipe(getPipeLine(), outputValidator, output, session);
 			if (validationResult!=null) {
 				if (!validationResult.isSuccessful()) {
 					return validationResult;
 				}
 				output = validationResult.getResult();
 			}
-			log.debug("response after validating ({}) [{}]", () -> ClassUtils.nameOf(validationResult.getResult()), validationResult::getResult);
+			log.debug("response after validating [{}]", validationResult::getResult);
 		}
 
 		if (outputWrapper != null) {
@@ -737,14 +736,9 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 		return new PipeRunResult(new PipeForward(PipeForward.SUCCESS_FORWARD_NAME, "dummy"), output);
 	}
 
-	private boolean validResult(Object result) throws IOException {
-		boolean validResult = true;
-		if (isCheckXmlWellFormed() || StringUtils.isNotEmpty(getCheckRootTag())) {
-			if (!XmlUtils.isWellFormed(Message.asString(result), getCheckRootTag())) {
-				validResult = false;
-			}
-		}
-		return validResult;
+	private boolean validResult(Message result) throws IOException {
+		return (!isCheckXmlWellFormed() && !StringUtils.isNotEmpty(getCheckRootTag()))
+				|| XmlUtils.isWellFormed(result.asString(), getCheckRootTag());
 	}
 
 	protected PipeRunResult sendMessage(Message input, PipeLineSession session, ISender sender, Map<String,Object> threadContext) throws SenderException, TimeoutException, InterruptedException, IOException {
@@ -756,7 +750,7 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 				exitState = PRESUMED_TIMEOUT_FORWARD;
 				throw new TimeoutException(PRESUMED_TIMEOUT_FORWARD);
 			}
-			try {
+			try (CloseableThreadContext.Instance ctc = CloseableThreadContext.put("sender", sender.getName())){
 				SenderResult senderResult = sender.sendMessage(input, session);
 				PipeForward forward = findForwardForResult(senderResult);
 				sendResult = new PipeRunResult(forward, senderResult.getResult());
@@ -862,7 +856,7 @@ public class MessageSendingPipe extends FixedForwardPipe implements HasSender {
 			currentInterval = retryInterval;
 			retryInterval = retryInterval * 2;
 		}
-		log.warn(description+", starts waiting for [" + currentInterval + "] seconds");
+		log.warn("{}, starts waiting for [{}] seconds", description, currentInterval);
 		while (currentInterval-- > 0) {
 			Thread.sleep(1000);
 		}

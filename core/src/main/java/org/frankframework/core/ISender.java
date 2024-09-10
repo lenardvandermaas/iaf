@@ -15,8 +15,7 @@
 */
 package org.frankframework.core;
 
-import javax.annotation.Nonnull;
-
+import jakarta.annotation.Nonnull;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.doc.ElementType;
@@ -26,8 +25,7 @@ import org.frankframework.doc.FrankDocGroupValue;
 import org.frankframework.stream.Message;
 
 /**
- * The <code>ISender</code> is responsible for sending a message to
- * some destination.
+ * Marks an implementation as responsible for sending a message to some destination.
  *
  * @author  Gerrit van Brakel
  */
@@ -77,7 +75,7 @@ public interface ISender extends IConfigurable {
 	 * Multiple objects may try to call this method at the same time, from different threads.
 	 * Implementations of this method should therefore be thread-safe, or <code>synchronized</code>.
 	 */
-	SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException;
+	@Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException;
 
 	default @Nonnull Message sendMessageOrThrow(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		SenderResult senderResult = sendMessage(message, session);

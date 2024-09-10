@@ -20,12 +20,12 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.Queue;
-import javax.jms.QueueBrowser;
-import javax.jms.QueueSession;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
 
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.ConfigurationWarning;
@@ -46,7 +46,7 @@ import lombok.Setter;
  *
  * @author  Johan Verrips
  */
-public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends JMSFacade implements IMessageBrowser<M> {
+public abstract class JmsMessageBrowser<M, J extends jakarta.jms.Message> extends JMSFacade implements IMessageBrowser<M> {
 
 	private @Getter long timeout = 3000;
 	private @Getter String selector=null;
@@ -97,7 +97,7 @@ public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends 
 
 	@Override
 	public boolean containsCorrelationId(String correlationId) throws ListenerException {
-		log.warn("could not determine correct presence of a message with correlationId [" + correlationId + "], assuming it doesnot exist");
+		log.warn("could not determine correct presence of a message with correlationId [{}], assuming it does not exist", correlationId);
 		// TODO: check presence of a message with correlationId
 		return false;
 	}
@@ -114,7 +114,7 @@ public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends 
 				queueBrowser=session.createBrowser((Queue)getDestination(), getSelector());
 			}
 			int count=0;
-			for (Enumeration enm=queueBrowser.getEnumeration();enm.hasMoreElements();enm.nextElement()) {
+			for (Enumeration<?> enm=queueBrowser.getEnumeration(); enm.hasMoreElements(); enm.nextElement()) {
 				count++;
 			}
 			return count;
@@ -165,18 +165,17 @@ public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends 
 	}
 
 
-	protected javax.jms.Message doBrowse(Map<String,String> selectors) throws ListenerException {
+	protected jakarta.jms.Message doBrowse(Map<String,String> selectors) throws ListenerException {
 		QueueSession session=null;
-		javax.jms.Message msg = null;
 		QueueBrowser queueBrowser=null;
 		try {
 			session = (QueueSession)createSession();
 			queueBrowser = session.createBrowser((Queue)getDestination(),getCombinedSelector(selectors));
-			Enumeration msgenum = queueBrowser.getEnumeration();
+			Enumeration<?> msgenum = queueBrowser.getEnumeration();
 			if (msgenum.hasMoreElements()) {
-				msg=(javax.jms.Message)msgenum.nextElement();
+				return (jakarta.jms.Message) msgenum.nextElement();
 			}
-			return msg;
+			return null;
 		} catch (Exception e) {
 			throw new ListenerException(e);
 		} finally {
@@ -191,7 +190,7 @@ public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends 
 		}
 	}
 
-	protected javax.jms.Message doBrowse(String selectorKey, String selectorValue) throws ListenerException {
+	protected jakarta.jms.Message doBrowse(String selectorKey, String selectorValue) throws ListenerException {
 		Map<String,String> selectorMap = new HashMap<>();
 		selectorMap.put(selectorKey, selectorValue);
 		return doBrowse(selectorMap);
@@ -203,7 +202,7 @@ public abstract class JmsMessageBrowser<M, J extends javax.jms.Message> extends 
 		MessageConsumer mc = null;
 		try {
 			session = createSession();
-			log.debug("retrieving message ["+messageId+"] in order to delete it");
+			log.debug("retrieving message [{}] in order to delete it", messageId);
 			mc = getMessageConsumer(session, getDestination(), getCombinedSelector(messageId));
 			mc.receive(getTimeout());
 		} catch (Exception e) {

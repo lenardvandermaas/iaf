@@ -28,8 +28,7 @@ import java.util.Properties;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -52,6 +51,7 @@ import org.frankframework.stream.Message;
 import org.frankframework.util.Dir2Xml;
 import org.frankframework.util.FileUtils;
 import org.frankframework.util.StreamUtil;
+import org.frankframework.util.TemporaryDirectoryUtils;
 import org.frankframework.util.TransformerPool;
 import org.frankframework.util.XmlUtils;
 
@@ -72,8 +72,8 @@ public class WsdlGeneratorPipe extends FixedForwardPipe {
 		File tempDirectoryBase;
 		String fileName;
 
-		try (InputStream inputStream = fileInSession.asInputStream()){
-			tempDirectoryBase = FileUtils.getTempDirectory("WsdlGeneratorPipe");
+		try (InputStream inputStream = fileInSession.asInputStream()) {
+			tempDirectoryBase = TemporaryDirectoryUtils.getTempDirectory("WsdlGeneratorPipe").toFile();
 			fileName = session.getString(getFilenameSessionKey());
 			if (extensionEqualsIgnoreCase(fileName)) {
 				unzipStream(inputStream, tempDirectoryBase);
@@ -216,7 +216,7 @@ public class WsdlGeneratorPipe extends FixedForwardPipe {
 			Resource xsdResource = Resource.getResource(xsdFile.getPath());
 			countRoot = tp.transform(xsdResource.asSource());
 			if (StringUtils.isNotEmpty(countRoot)) {
-				log.debug("counted [" + countRoot + "] root elements in xsd file [" + xsdFile.getName() + "]");
+				log.debug("counted [{}] root elements in xsd file [{}]", countRoot, xsdFile.getName());
 				int cr = Integer.parseInt(countRoot);
 				if (cr > 1) {
 					EsbSoapValidator outputValidator;
@@ -244,12 +244,12 @@ public class WsdlGeneratorPipe extends FixedForwardPipe {
 					TransformerPool tp = TransformerPool.getXPathTransformerPool("*/@targetNamespace", XmlUtils.DEFAULT_XSLT_VERSION);
 					xsdTargetNamespace = tp.transform(xsdResource.asSource());
 					if (StringUtils.isNotEmpty(xsdTargetNamespace)) {
-						log.debug("found target namespace [" + xsdTargetNamespace + "] in xsd file [" + xsdFile.getName() + "]");
+						log.debug("found target namespace [{}] in xsd file [{}]", xsdTargetNamespace, xsdFile.getName());
 					} else {
 						// default namespace to prevent
 						// "(IllegalArgumentException) The schema attribute isn't supported"
 						xsdTargetNamespace = "urn:wsdlGenerator";
-						log.warn("could not find target namespace in xsd file [" + xsdFile.getName() + "], assuming namespace [" + xsdTargetNamespace + "]");
+						log.warn("could not find target namespace in xsd file [{}], assuming namespace [{}]", xsdFile.getName(), xsdTargetNamespace);
 					}
 				} catch (Exception e) {
 					throw new ConfigurationException(e);
@@ -274,7 +274,7 @@ public class WsdlGeneratorPipe extends FixedForwardPipe {
 					TransformerPool tp = TransformerPool.getXPathTransformerPool(rootXPath, XmlUtils.DEFAULT_XSLT_VERSION);
 					xsdRoot = tp.transform(xsdResource.asSource());
 					if (StringUtils.isNotEmpty(xsdRoot)) {
-						log.debug("found root element [" + xsdRoot + "] in xsd file [" + xsdFile.getName() + "]");
+						log.debug("found root element [{}] in xsd file [{}]", xsdRoot, xsdFile.getName());
 						esbSoapValidator.setSoapBody(xsdRoot);
 					}
 				} catch (Exception e) {
@@ -309,14 +309,22 @@ public class WsdlGeneratorPipe extends FixedForwardPipe {
 			while ((ze = zis.getNextEntry()) != null) {
 				String filename = ze.getName();
 				File zipFile = new File(dir, filename);
-				if (ze.isDirectory()) {
-					createDirectoryIfNotExists(zipFile, ze);
-				} else {
-					File zipParentFile = zipFile.getParentFile();
-					createDirectoryIfNotExists(zipParentFile, ze);
-					try (FileOutputStream fos = new FileOutputStream(zipFile)) {
-						log.debug("writing ZipEntry [{}] to file [{}]", ze.getName(), zipFile.getPath());
-						StreamUtil.streamToStream(StreamUtil.dontClose(zis), fos);
+
+				String canonicalDestinationPath = zipFile.getCanonicalPath();
+
+				// Check for ZipSlip vulnerability
+				if (canonicalDestinationPath.startsWith(dir.getCanonicalPath())) {
+					if (ze.isDirectory()) {
+						createDirectoryIfNotExists(zipFile, ze);
+					} else {
+
+						File zipParentFile = zipFile.getParentFile();
+						createDirectoryIfNotExists(zipParentFile, ze);
+
+						try (FileOutputStream fos = new FileOutputStream(zipFile)) {
+							log.debug("writing ZipEntry [{}] to file [{}]", ze.getName(), zipFile.getPath());
+							StreamUtil.streamToStream(StreamUtil.dontClose(zis), fos);
+						}
 					}
 				}
 			}

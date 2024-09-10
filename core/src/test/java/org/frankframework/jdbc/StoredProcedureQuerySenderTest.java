@@ -30,22 +30,26 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.DeflaterInputStream;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+
+import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
 import org.frankframework.core.SenderResult;
+import org.frankframework.dbms.Dbms;
 import org.frankframework.dbms.JdbcException;
+import org.frankframework.parameters.NumberParameter;
 import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.ParameterType;
 import org.frankframework.stream.Message;
+import org.frankframework.testutil.NumberParameterBuilder;
 import org.frankframework.testutil.TestFileUtils;
 import org.frankframework.testutil.junit.DatabaseTest;
 import org.frankframework.testutil.junit.DatabaseTestEnvironment;
 import org.frankframework.testutil.junit.WithLiquibase;
 import org.frankframework.util.StreamUtil;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-
-import lombok.extern.log4j.Log4j2;
 
 @WithLiquibase(tableName = StoredProcedureQuerySenderTest.TABLE_NAME, file = "Jdbc/StoredProcedureQuerySender/DatabaseChangelog-StoredProcedures.xml")
 @Log4j2
@@ -58,21 +62,21 @@ public class StoredProcedureQuerySenderTest {
 
 	private PipeLineSession session;
 
-	private String dataSourceName;
+	private Dbms databaseUnderTest;
 
 	@BeforeEach
-	public void setUp(DatabaseTestEnvironment databaseTestEnvironment) throws Throwable {
-		dataSourceName = databaseTestEnvironment.getDataSourceName();
+	public void setUp(DatabaseTestEnvironment databaseTestEnvironment) {
+		databaseUnderTest = databaseTestEnvironment.getDbmsSupport().getDbms();
 
 		sender = databaseTestEnvironment.getConfiguration().createBean(StoredProcedureQuerySender.class);
 		sender.setSqlDialect("Oracle");
-		sender.setDatasourceName(dataSourceName);
+		sender.setDatasourceName(databaseTestEnvironment.getDataSourceName());
 
 		session = new PipeLineSession();
 	}
 
 	@AfterEach
-	public void tearDown(DatabaseTestEnvironment databaseTestEnvironment) throws Throwable {
+	public void tearDown(DatabaseTestEnvironment databaseTestEnvironment) {
 		if (session != null) {
 			session.close();
 		}
@@ -80,7 +84,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testSimpleStoredProcedureNoResultNoParameters(DatabaseTestEnvironment databaseTestEnvironment) throws Throwable {
-		assumeFalse("H2".equals(dataSourceName), "H2 driver gives incorrect results for this test case");
+		assumeFalse(Dbms.H2 == databaseUnderTest, "H2 driver gives incorrect results for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -158,7 +162,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testSimpleStoredProcedureBlobInputParameter(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("H2", "PostgreSQL", "DB2").contains(dataSourceName), "H2, PSQL, DB2 not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL, Dbms.DB2).contains(databaseUnderTest), "H2, PSQL, DB2 not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -167,12 +171,11 @@ public class StoredProcedureQuerySenderTest {
 		sender.setQueryType(JdbcQuerySenderBase.QueryType.OTHER);
 		sender.setScalar(true);
 
-		Parameter p1 = new Parameter("id", String.valueOf(id));
-		p1.setType(Parameter.ParameterType.NUMBER);
+		NumberParameter p1 = NumberParameterBuilder.create("id", id);
 		sender.addParameter(p1);
 		Parameter p2 = new Parameter("data", null);
 		p2.setSessionKey("data");
-		p2.setType(Parameter.ParameterType.BINARY);
+		p2.setType(ParameterType.BINARY);
 		sender.addParameter(p2);
 		session.put("data", new ByteArrayInputStream(TEST_DATA_STRING.getBytes(StandardCharsets.UTF_8)));
 
@@ -192,7 +195,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testSimpleStoredProcedureClobInputParameter(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("H2", "PostgreSQL", "DB2").contains(dataSourceName), "H2, PSQL, DB2 not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL, Dbms.DB2).contains(databaseUnderTest), "H2, PSQL, DB2 not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -201,12 +204,11 @@ public class StoredProcedureQuerySenderTest {
 		sender.setQueryType(JdbcQuerySenderBase.QueryType.OTHER);
 		sender.setScalar(true);
 
-		Parameter p1 = new Parameter("id", String.valueOf(id));
-		p1.setType(Parameter.ParameterType.NUMBER);
+		NumberParameter p1 = NumberParameterBuilder.create("id", id);
 		sender.addParameter(p1);
 		Parameter p2 = new Parameter("data", null);
 		p2.setSessionKey("data");
-		p2.setType(Parameter.ParameterType.CHARACTER);
+		p2.setType(ParameterType.CHARACTER);
 		sender.addParameter(p2);
 		session.put("data", new StringReader(TEST_DATA_STRING));
 
@@ -226,7 +228,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testSimpleStoredProcedureClobInputParameter2(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("H2", "PostgreSQL", "DB2").contains(dataSourceName), "H2, PSQL, DB2 not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL, Dbms.DB2).contains(databaseUnderTest), "H2, PSQL, DB2 not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -235,14 +237,13 @@ public class StoredProcedureQuerySenderTest {
 		sender.setQueryType(JdbcQuerySenderBase.QueryType.OTHER);
 		sender.setScalar(true);
 
-		Parameter p1 = new Parameter("id", String.valueOf(id));
-		p1.setType(Parameter.ParameterType.NUMBER);
+		NumberParameter p1 = NumberParameterBuilder.create("id", id);
 		sender.addParameter(p1);
 		Parameter p2 = new Parameter("data", null);
 		p2.setSessionKey("data");
-		p2.setType(Parameter.ParameterType.CHARACTER);
+		p2.setType(ParameterType.CHARACTER);
 		sender.addParameter(p2);
-		Message message1 = Message.asMessage(new StringReader(TEST_DATA_STRING));
+		Message message1 = new Message(new StringReader(TEST_DATA_STRING));
 		message1.getContext().withSize(TEST_DATA_STRING.getBytes().length);
 		session.put("data", message1);
 
@@ -263,7 +264,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureInputAndOutputParameters(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse("H2".equalsIgnoreCase(dataSourceName), "H2 does not support OUT parameters, skipping test case");
+		assumeFalse(Dbms.H2 == databaseUnderTest, "H2 does not support OUT parameters, skipping test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -278,7 +279,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.STRING);
+		outParam1.setType(ParameterType.STRING);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -297,7 +298,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureInputAndOutputParameterNullValue(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse("H2".equalsIgnoreCase(dataSourceName), "H2 does not support OUT parameters, skipping test case");
+		assumeFalse(Dbms.H2 == databaseUnderTest, "H2 does not support OUT parameters, skipping test case");
 
 		// Arrange
 		long id = insertRowWithMessageValue(null, databaseTestEnvironment);
@@ -311,7 +312,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.STRING);
+		outParam1.setType(ParameterType.STRING);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -349,7 +350,7 @@ public class StoredProcedureQuerySenderTest {
 
 	private void testStoredProcedureBlobOutputParameter(boolean blobSmartGet, boolean compressed, String charSet, DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse(Set.of("H2", "PostgreSQL").contains(dataSourceName), "H2, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL).contains(databaseUnderTest), "H2, PSQL not supported for this test case");
 
 
 		// Arrange
@@ -367,7 +368,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.BINARY);
+		outParam1.setType(ParameterType.BINARY);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -386,7 +387,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureClobOutputParameter(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse(Set.of("H2", "PostgreSQL").contains(dataSourceName), "H2, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL).contains(databaseUnderTest), "H2, PSQL not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -401,7 +402,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.CHARACTER);
+		outParam1.setType(ParameterType.CHARACTER);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -420,7 +421,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureBlobOutputParameterNullValue(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse(Set.of("H2", "PostgreSQL").contains(dataSourceName), "H2, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL).contains(databaseUnderTest), "H2, PSQL not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -435,7 +436,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.BINARY);
+		outParam1.setType(ParameterType.BINARY);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -458,7 +459,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureClobOutputParameterNullValue(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse(Set.of("H2", "PostgreSQL").contains(dataSourceName), "H2, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.POSTGRESQL).contains(databaseUnderTest), "H2, PSQL not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -473,7 +474,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.CHARACTER);
+		outParam1.setType(ParameterType.CHARACTER);
 		sender.addParameter(outParam1);
 
 		sender.configure();
@@ -492,7 +493,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureInputAndOutputParametersXmlOutput(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse("H2".equalsIgnoreCase(dataSourceName), "H2 does not support OUT parameters, skipping test case");
+		assumeFalse(Dbms.H2 == databaseUnderTest, "H2 does not support OUT parameters, skipping test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -506,12 +507,12 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter outParam1 = new Parameter("r1", null);
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.STRING);
+		outParam1.setType(ParameterType.STRING);
 		sender.addParameter(outParam1);
 
 		Parameter outParam2 = new Parameter("r2", null);
 		outParam2.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam2.setType(Parameter.ParameterType.STRING);
+		outParam2.setType(ParameterType.STRING);
 		sender.addParameter(outParam2);
 
 		sender.configure();
@@ -534,7 +535,7 @@ public class StoredProcedureQuerySenderTest {
 	@DatabaseTest
 	public void testStoredProcedureOutputParameterConversion(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
 
-		assumeFalse("H2".equalsIgnoreCase(dataSourceName), "H2 does not support OUT parameters, skipping test case");
+		assumeFalse(Dbms.H2 == databaseUnderTest, "H2 does not support OUT parameters, skipping test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -547,19 +548,19 @@ public class StoredProcedureQuerySenderTest {
 		inParam.setMode(Parameter.ParameterMode.INOUT);
 		sender.addParameter(inParam);
 
-		Parameter outParam1 = new Parameter("r1", null);
+		NumberParameter outParam1 = NumberParameterBuilder.create("r1");
 		outParam1.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam1.setType(Parameter.ParameterType.INTEGER);
 		sender.addParameter(outParam1);
 
-		Parameter outParam2 = new Parameter("r2", null);
+		NumberParameter outParam2 = NumberParameterBuilder.create("r2");
 		outParam2.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam2.setType(Parameter.ParameterType.INTEGER);
 		sender.addParameter(outParam2);
 
-		Parameter outParam3 = new Parameter("r3", null);
+		NumberParameter outParam3 = NumberParameterBuilder.create("r3");
+		// Setting these makes it a type NUMBER (which translates to Number, Double, in the JDBC mappings, so we test that code-path)
+		outParam3.setDecimalSeparator(".");
+		outParam3.setGroupingSeparator(",");
 		outParam3.setMode(Parameter.ParameterMode.OUTPUT);
-		outParam3.setType(Parameter.ParameterType.NUMBER);
 		sender.addParameter(outParam3);
 
 		sender.configure();
@@ -581,7 +582,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningResultSetQueryTypeSelect(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("Oracle", "PostgreSQL").contains(dataSourceName), "Oracle, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.ORACLE, Dbms.POSTGRESQL).contains(databaseUnderTest), "Oracle, PSQL not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -615,7 +616,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningResultSetQueryTypeOther(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("Oracle", "PostgreSQL").contains(dataSourceName), "Oracle, PSQL not supported for this test case");
+		assumeFalse(Set.of(Dbms.ORACLE, Dbms.POSTGRESQL).contains(databaseUnderTest), "Oracle, PSQL not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -649,7 +650,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningResultSetAndOutParameters(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeFalse(Set.of("H2", "Oracle", "PostgreSQL").contains(dataSourceName), "H2, PSQL, Oracle not supported for this test case");
+		assumeFalse(Set.of(Dbms.H2, Dbms.ORACLE, Dbms.POSTGRESQL).contains(databaseUnderTest), "H2, PSQL, Oracle not supported for this test case");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -663,10 +664,9 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter parameter = new Parameter("content", value);
 		sender.addParameter(parameter);
-		Parameter count = new Parameter();
+		NumberParameter count = new NumberParameter();
 		count.setName("count");
 		count.setMode(Parameter.ParameterMode.OUTPUT);
-		count.setType(Parameter.ParameterType.INTEGER);
 		sender.addParameter(count);
 
 		sender.configure();
@@ -688,7 +688,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningCursorSingleOutParameter(DatabaseTestEnvironment databaseTestEnvironment) throws Throwable {
-		assumeTrue(dataSourceName.contains("Oracle"), "REFCURSOR not supported, skipping test");
+		assumeTrue(Dbms.ORACLE == databaseUnderTest, "REFCURSOR not supported, skipping test");
 
 		// NOTE: This test only works on a clean database as it selects all rows and matches that against fixed expectation.
 		int rowCount = countAllRows(databaseTestEnvironment);
@@ -706,7 +706,7 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter cursorParam = new Parameter();
 		cursorParam.setName("cursor1");
-		cursorParam.setType(Parameter.ParameterType.LIST);
+		cursorParam.setType(ParameterType.LIST);
 		cursorParam.setMode(Parameter.ParameterMode.OUTPUT);
 		sender.addParameter(cursorParam);
 
@@ -729,7 +729,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningCursorInOutParameter(DatabaseTestEnvironment databaseTestEnvironment) throws Exception {
-		assumeTrue(dataSourceName.contains("Oracle"), "REFCURSOR not supported, skipping test");
+		assumeTrue(Dbms.ORACLE == databaseUnderTest, "REFCURSOR not supported, skipping test");
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -743,14 +743,13 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter parameter = new Parameter("content", value);
 		sender.addParameter(parameter);
-		Parameter countParam = new Parameter();
+		NumberParameter countParam = new NumberParameter();
 		countParam.setName("count");
-		countParam.setType(Parameter.ParameterType.INTEGER);
 		countParam.setMode(Parameter.ParameterMode.OUTPUT);
 		sender.addParameter(countParam);
 		Parameter cursorParam = new Parameter();
     	cursorParam.setName("cursor1");
-    	cursorParam.setType(Parameter.ParameterType.LIST);
+    	cursorParam.setType(ParameterType.LIST);
     	cursorParam.setMode(Parameter.ParameterMode.OUTPUT);
     	sender.addParameter(cursorParam);
 
@@ -773,7 +772,7 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testStoredProcedureReturningCursorNotSupported() throws Exception {
-		assumeTrue("MS_SQL".equals(dataSourceName));
+		assumeTrue(Dbms.MSSQL == databaseUnderTest);
 
 		// Arrange
 		String value = UUID.randomUUID().toString();
@@ -782,14 +781,13 @@ public class StoredProcedureQuerySenderTest {
 
 		Parameter parameter = new Parameter("content", value);
 		sender.addParameter(parameter);
-		Parameter countParam = new Parameter();
+		NumberParameter countParam = new NumberParameter();
 		countParam.setName("count");
-		countParam.setType(Parameter.ParameterType.INTEGER);
 		countParam.setMode(Parameter.ParameterMode.OUTPUT);
 		sender.addParameter(countParam);
 		Parameter cursorParam = new Parameter();
     	cursorParam.setName("cursor1");
-    	cursorParam.setType(Parameter.ParameterType.LIST);
+    	cursorParam.setType(ParameterType.LIST);
     	cursorParam.setMode(Parameter.ParameterMode.OUTPUT);
     	sender.addParameter(cursorParam);
 
@@ -806,22 +804,20 @@ public class StoredProcedureQuerySenderTest {
 
 	@DatabaseTest
 	public void testCallFunction() throws Exception {
-		assumeTrue("Oracle".equalsIgnoreCase(dataSourceName), "CALL to custom function only tested on Oracle so far");
+		assumeTrue(Dbms.ORACLE == databaseUnderTest, "CALL to custom function only tested on Oracle so far");
 
 		// Arrange
 		sender.setQuery("{ ? = call add_numbers(?, ?) }");
 		sender.setQueryType(JdbcQuerySenderBase.QueryType.OTHER);
 		sender.setScalar(true);
 
-		Parameter resultParam = new Parameter("result", "0");
-		resultParam.setType(Parameter.ParameterType.INTEGER);
+		// NB: All these parameters were originally INTEGER. Perhaps need new type IntegerParameter?
+		NumberParameter resultParam = NumberParameterBuilder.create("result", 0);
 		resultParam.setMode(Parameter.ParameterMode.OUTPUT);
 		sender.addParameter(resultParam);
-		Parameter p1 = new Parameter("one", "1");
-		p1.setType(Parameter.ParameterType.INTEGER);
+		NumberParameter p1 = NumberParameterBuilder.create("one", 1);
 		sender.addParameter(p1);
-		Parameter p2 = new Parameter("two", "2");
-		p2.setType(Parameter.ParameterType.INTEGER);
+		NumberParameter p2 = NumberParameterBuilder.create("two", 2);
 		sender.addParameter(p2);
 
 		sender.configure();

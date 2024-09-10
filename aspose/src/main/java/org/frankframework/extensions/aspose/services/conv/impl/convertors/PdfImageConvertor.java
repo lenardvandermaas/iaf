@@ -17,6 +17,7 @@ package org.frankframework.extensions.aspose.services.conv.impl.convertors;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -100,20 +101,25 @@ public class PdfImageConvertor extends AbstractConvertor {
 			// Temporary file (because first we need to get image information (the size) and than load it into
 			// the pdf. The image itself can not be loaded into the pdf because it will be blured with orange.
 			tmpImageFile = UniqueFileGenerator.getUniqueFile(configuration.getPdfOutputLocation(), this.getClass().getSimpleName(), mediaType.getSubtype());
-			image = com.aspose.imaging.Image.load(message.asInputStream());
+			try(InputStream is = message.asInputStream()) {
+				image = com.aspose.imaging.Image.load(is);
+			}
 			if(mediaType.getSubtype().equalsIgnoreCase(TIFF)) {
 				TiffFrame[] frames = ((TiffImage)image).getFrames();
-				PngOptions pngOptions = new PngOptions();
-				for(int i=0; i<frames.length;i++) {
-					Image pdfImage = new Image();
-					frames[i].save(tmpImageFile.getAbsolutePath()+i, pngOptions);
-					pdfImage.setFile(tmpImageFile.getAbsolutePath()+i);
-					page.getParagraphs().add(pdfImage);
+				try(PngOptions pngOptions = new PngOptions()) {
+					for(int i=0; i<frames.length;i++) {
+						Image pdfImage = new Image();
+						frames[i].save(tmpImageFile.getAbsolutePath()+i, pngOptions);
+						pdfImage.setFile(tmpImageFile.getAbsolutePath()+i);
+						page.getParagraphs().add(pdfImage);
+					}
 				}
 			} else {
-				Files.copy(message.asInputStream(), tmpImageFile.toPath());
+				try(InputStream is = message.asInputStream()) {
+					Files.copy(is, tmpImageFile.toPath());
+				}
 				BufferedImage bufferedImage = ImageExtensions.toJava(image);
-				LOGGER.debug("Image info height:" + bufferedImage.getHeight() + " width:" + bufferedImage.getWidth());
+				LOGGER.debug("Image info height:{} width:{}", bufferedImage::getHeight, bufferedImage::getWidth);
 
 				float maxImageWidthInPoints = PageConvertUtil.convertCmToPoints(PageConvertUtil.PAGE_WIDHT_IN_CM - NUMBER_OF_MARGINS * marginInCm);
 				float maxImageHeightInPoints = PageConvertUtil.convertCmToPoints(PageConvertUtil.PAGE_HEIGTH_IN_CM - NUMBER_OF_MARGINS * marginInCm);
@@ -139,12 +145,11 @@ public class PdfImageConvertor extends AbstractConvertor {
 			long startTime = new Date().getTime();
 			doc.save(result.getPdfResultFile().getAbsolutePath(), SaveFormat.Pdf);
 			long endTime = new Date().getTime();
-			LOGGER.info("Conversion(save operation in convert method) takes  :::  " + (endTime - startTime) + " ms");
+			LOGGER.info("Conversion(save operation in convert method) takes  ::: {} ms", () -> (endTime - startTime));
 			result.setNumberOfPages(getNumberOfPages(result.getPdfResultFile()));
 
 		} finally {
 			doc.freeMemory();
-			doc.dispose();
 			doc.close();
 
 			// Delete always the temporary file.

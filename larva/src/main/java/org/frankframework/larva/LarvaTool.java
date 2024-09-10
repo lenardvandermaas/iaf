@@ -1,5 +1,5 @@
 /*
-   Copyright 2014-2019 Nationale-Nederlanden, 2020-2023 WeAreFrank!
+   Copyright 2014-2019 Nationale-Nederlanden, 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
@@ -42,7 +44,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -54,16 +55,18 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.zip.ZipInputStream;
 
-import javax.annotation.Nullable;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
+import jakarta.annotation.Nullable;
+import jakarta.json.JsonException;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.logging.log4j.Logger;
 import org.custommonkey.xmlunit.Diff;
 import org.custommonkey.xmlunit.XMLUnit;
@@ -85,7 +88,6 @@ import org.frankframework.receivers.RawMessageWrapper;
 import org.frankframework.stream.FileMessage;
 import org.frankframework.stream.Message;
 import org.frankframework.util.AppConstants;
-import org.frankframework.util.CaseInsensitiveComparator;
 import org.frankframework.util.DomBuilderException;
 import org.frankframework.util.FileUtils;
 import org.frankframework.util.LogUtil;
@@ -94,17 +96,15 @@ import org.frankframework.util.ProcessUtil;
 import org.frankframework.util.StreamUtil;
 import org.frankframework.util.StringResolver;
 import org.frankframework.util.StringUtil;
+import org.frankframework.util.TemporaryDirectoryUtils;
 import org.frankframework.util.XmlEncodingUtils;
 import org.frankframework.util.XmlUtils;
-
-import jakarta.json.JsonException;
 
 /**
  * @author Jaco de Groot
  */
 public class LarvaTool {
 	private static final Logger logger = LogUtil.getLogger(LarvaTool.class);
-	public static final String LOG_LEVEL_ORDER = "[debug], [pipeline messages prepared for diff], [pipeline messages], [wrong pipeline messages prepared for diff], [wrong pipeline messages], [step passed/failed], [scenario passed/failed], [scenario failed], [totals], [error]";
 	public static final int ERROR_NO_SCENARIO_DIRECTORIES_FOUND = -1;
 	protected static final String TESTTOOL_CLEAN_UP_REPLY = "<LarvaTool>Clean up reply</LarvaTool>";
 	public static final int RESULT_ERROR = 0;
@@ -147,6 +147,7 @@ public class LarvaTool {
 	public static void runScenarios(IbisContext ibisContext, HttpServletRequest request, Writer out, boolean silent, String realPath) {
 		String paramLogLevel = request.getParameter("loglevel");
 		String paramAutoScroll = request.getParameter("autoscroll");
+		String paramMultiThreaded = request.getParameter("multithreaded");
 		String paramExecute = request.getParameter("execute");
 		String paramWaitBeforeCleanUp = request.getParameter("waitbeforecleanup");
 		String paramGlobalTimeout = request.getParameter("timeout");
@@ -160,7 +161,7 @@ public class LarvaTool {
 		}
 		String paramScenariosRootDirectory = request.getParameter("scenariosrootdirectory");
 		LarvaTool larvaTool = new LarvaTool();
-		larvaTool.runScenarios(ibisContext, paramLogLevel, paramAutoScroll, paramExecute, paramWaitBeforeCleanUp, timeout,
+		larvaTool.runScenarios(ibisContext, paramLogLevel, paramAutoScroll, paramMultiThreaded, paramExecute, paramWaitBeforeCleanUp, timeout,
 				realPath, paramScenariosRootDirectory, out, silent);
 	}
 
@@ -169,26 +170,25 @@ public class LarvaTool {
 	 * 		   0: all scenarios passed
 	 * 		   positive: number of scenarios that failed
 	 */
-	public int runScenarios(IbisContext ibisContext, String paramLogLevel,
-			String paramAutoScroll, String paramExecute, String paramWaitBeforeCleanUp,
-			int timeout, String realPath, String paramScenariosRootDirectory,
-			Writer out, boolean silent) {
+	public int runScenarios(IbisContext ibisContext, String paramLogLevel, String paramAutoScroll, String paramMultithreaded, String paramExecute,
+							String paramWaitBeforeCleanUp, int timeout, String realPath, String paramScenariosRootDirectory, Writer out, boolean silent) {
 		config.setTimeout(timeout);
 		config.setSilent(silent);
 		AppConstants appConstants = AppConstants.getInstance();
-		String logLevel = "wrong pipeline messages";
-		boolean autoScroll = true;
-		if (paramLogLevel != null && LOG_LEVEL_ORDER.contains("[" + paramLogLevel + "]")) {
-			logLevel = paramLogLevel;
+		LarvaLogLevel logLevel = config.getLogLevel();
+		if (paramLogLevel != null) {
+			logLevel = LarvaLogLevel.parse(paramLogLevel, logLevel);
 		}
 		if (paramAutoScroll == null && paramLogLevel != null) {
-			autoScroll = false;
+			config.setAutoScroll(false);
+		}
+		if (StringUtils.isNotEmpty(paramMultithreaded) && Boolean.parseBoolean(paramMultithreaded) && paramLogLevel != null) {
+			config.setMultiThreaded(true);
 		}
 
 		if (!silent) {
 			config.setOut(out);
 			config.setLogLevel(logLevel);
-			config.setAutoScroll(autoScroll);
 		} else {
 			config.setSilentOut(out);
 		}
@@ -214,7 +214,7 @@ public class LarvaTool {
 			return ERROR_NO_SCENARIO_DIRECTORIES_FOUND;
 		}
 
-		debugMessage("Read scenarios from directory '" + currentScenariosRootDirectory + "'");
+		debugMessage("Read scenarios from directory '" + StringEscapeUtils.escapeJava(currentScenariosRootDirectory) + "'");
 		List<File> allScenarioFiles = readScenarioFiles(appConstants, currentScenariosRootDirectory);
 		debugMessage("Initialize 'wait before cleanup' variable");
 		int waitBeforeCleanUp = 100;
@@ -232,103 +232,107 @@ public class LarvaTool {
 		config.setUseLogBuffer(false);
 		debugMessage("Start debugging to out");
 		debugMessage("Execute scenario(s) if execute parameter present and scenarios root directory did not change");
+		if (paramExecute == null) {
+			config.flushWriters();
+			return 0;
+		}
 		int scenariosFailed = 0;
-		if (paramExecute != null) {
-			String paramExecuteCanonicalPath;
-			String scenariosRootDirectoryCanonicalPath;
-			try {
-				paramExecuteCanonicalPath = new File(paramExecute).getCanonicalPath();
-				scenariosRootDirectoryCanonicalPath = new File(currentScenariosRootDirectory).getCanonicalPath();
-			} catch(IOException e) {
-				paramExecuteCanonicalPath = paramExecute;
-				scenariosRootDirectoryCanonicalPath = currentScenariosRootDirectory;
-				errorMessage("Could not get canonical path: " + e.getMessage(), e);
+		String paramExecuteCanonicalPath;
+		String scenariosRootDirectoryCanonicalPath;
+		try {
+			paramExecuteCanonicalPath = new File(paramExecute).getCanonicalPath();
+			scenariosRootDirectoryCanonicalPath = new File(currentScenariosRootDirectory).getCanonicalPath();
+		} catch(IOException e) {
+			paramExecuteCanonicalPath = paramExecute;
+			scenariosRootDirectoryCanonicalPath = currentScenariosRootDirectory;
+			errorMessage("Could not get canonical path: " + e.getMessage(), e);
+		}
+		if (paramExecuteCanonicalPath.startsWith(scenariosRootDirectoryCanonicalPath)) {
+			debugMessage("Initialize XMLUnit");
+			XMLUnit.setIgnoreWhitespace(true);
+			debugMessage("Initialize 'scenario files' variable");
+			debugMessage("Param execute: " + paramExecute);
+			List<File> scenarioFiles;
+			if (paramExecute.endsWith(".properties")) {
+				debugMessage("Read one scenario");
+				scenarioFiles = new ArrayList<>();
+				scenarioFiles.add(new File(paramExecute));
+			} else {
+				debugMessage("Read all scenarios from directory '" + paramExecute + "'");
+				scenarioFiles = readScenarioFiles(appConstants, paramExecute);
 			}
-			if (paramExecuteCanonicalPath.startsWith(scenariosRootDirectoryCanonicalPath)) {
-				debugMessage("Initialize XMLUnit");
-				XMLUnit.setIgnoreWhitespace(true);
-				debugMessage("Initialize 'scenario files' variable");
-				debugMessage("Param execute: " + paramExecute);
-				List<File> scenarioFiles;
-				if (paramExecute.endsWith(".properties")) {
-					debugMessage("Read one scenario");
-					scenarioFiles = new ArrayList<>();
-					scenarioFiles.add(new File(paramExecute));
-				} else {
-					debugMessage("Read all scenarios from directory '" + paramExecute + "'");
-					scenarioFiles = readScenarioFiles(appConstants, paramExecute);
-				}
-				boolean evenStep = false;
-				debugMessage("Initialize statistics variables");
-				long startTime = System.currentTimeMillis();
-				debugMessage("Execute scenario('s)");
-				ScenarioRunner scenarioRunner = new ScenarioRunner();
-				scenarioRunner.setLarvaTool(this);
-				scenarioRunner.runScenario(ibisContext, config, scenarioFiles, currentScenariosRootDirectory, appConstants, evenStep, waitBeforeCleanUp, logLevel);
-				config.flushWriters();
-				scenariosFailed = scenarioRunner.getScenariosFailed();
+			boolean evenStep = false;
+			debugMessage("Initialize statistics variables");
+			long startTime = System.currentTimeMillis();
+			debugMessage("Execute scenario('s)");
+			ScenarioRunner scenarioRunner = new ScenarioRunner(this, ibisContext, config, appConstants, evenStep, waitBeforeCleanUp, logLevel);
+			// If only one scenario is executed, do not use multithreading, because they mostly use the same resources
+			if (paramScenariosRootDirectory != null && !paramScenariosRootDirectory.equals(paramExecute)) {
+				scenarioRunner.setMultipleThreads(false);
+			}
+			scenarioRunner.runScenario(scenarioFiles, currentScenariosRootDirectory);
+			config.flushWriters();
+			scenariosFailed = scenarioRunner.getScenariosFailed().get();
 
-				long executeTime = System.currentTimeMillis() - startTime;
-				debugMessage("Print statistics information");
-				int scenariosTotal = scenarioRunner.getScenariosPassed() + scenarioRunner.getScenariosAutosaved() + scenarioRunner.getScenariosFailed();
-				if (scenariosTotal == 0) {
-					scenariosTotalMessage("No scenarios found");
+			long executeTime = System.currentTimeMillis() - startTime;
+			debugMessage("Print statistics information");
+			int scenariosTotal = scenarioRunner.getScenariosPassed().get() + scenarioRunner.getScenariosAutosaved().get() + scenarioRunner.getScenariosFailed().get();
+			if (scenariosTotal == 0) {
+				scenariosTotalMessage("No scenarios found");
+				config.flushWriters();
+				return 0;
+			}
+			if (!config.isSilent() && logLevel.shouldLog(LarvaLogLevel.SCENARIO_PASSED_FAILED)) {
+				writeHtml("<br/><br/>", false);
+			}
+			debugMessage("Print statistics information");
+			String formattedTime = getFormattedTime(executeTime);
+			if (scenarioRunner.getScenariosPassed().get() == scenariosTotal) {
+				if (scenariosTotal == 1) {
+					scenariosPassedTotalMessage("All scenarios passed (1 scenario executed in " + formattedTime + ")");
 				} else {
-					if (!config.isSilent()) {
-						if (LOG_LEVEL_ORDER.indexOf("[" + config.getLogLevel() + "]") <= LOG_LEVEL_ORDER.indexOf("[scenario passed/failed]")) {
-							writeHtml("<br/><br/>",  false);
-						}
-					}
-					debugMessage("Print statistics information");
-					String formattedTime = getFormattedTime(executeTime);
-					if (scenarioRunner.getScenariosPassed() == scenariosTotal) {
-						if (scenariosTotal == 1) {
-							scenariosPassedTotalMessage("All scenarios passed (1 scenario executed in " + formattedTime + ")");
-						} else {
-							scenariosPassedTotalMessage("All scenarios passed (" + scenariosTotal + " scenarios executed in " + formattedTime + ")");
-						}
-					} else if (scenarioRunner.getScenariosFailed() == scenariosTotal) {
-						if (scenariosTotal == 1) {
-							scenariosFailedTotalMessage("All scenarios failed (1 scenario executed in " + formattedTime + ")");
-						} else {
-							scenariosFailedTotalMessage("All scenarios failed (" + scenariosTotal + " scenarios executed in " + formattedTime + ")");
-						}
+					scenariosPassedTotalMessage("All scenarios passed (" + scenariosTotal + " scenarios executed in " + formattedTime + ")");
+				}
+			} else if (scenarioRunner.getScenariosFailed().get() == scenariosTotal) {
+				if (scenariosTotal == 1) {
+					scenariosFailedTotalMessage("All scenarios failed (1 scenario executed in " + formattedTime + ")");
+				} else {
+					scenariosFailedTotalMessage("All scenarios failed (" + scenariosTotal + " scenarios executed in " + formattedTime + ")");
+				}
+			} else {
+				if (scenariosTotal == 1) {
+					scenariosTotalMessage("1 scenario executed in " + formattedTime);
+				} else {
+					scenariosTotalMessage(scenariosTotal + " scenarios executed in " + formattedTime);
+				}
+				if (scenarioRunner.getScenariosPassed().get() == 1) {
+					scenariosPassedTotalMessage("1 scenario passed");
+				} else {
+					scenariosPassedTotalMessage(scenarioRunner.getScenariosPassed() + " scenarios passed");
+				}
+				if (autoSaveDiffs) {
+					if (scenarioRunner.getScenariosAutosaved().get() == 1) {
+						scenariosAutosavedTotalMessage("1 scenario passed after autosave");
 					} else {
-						if (scenariosTotal == 1) {
-							scenariosTotalMessage("1 scenario executed in " + formattedTime);
-						} else {
-							scenariosTotalMessage(scenariosTotal + " scenarios executed in " + formattedTime);
-						}
-						if (scenarioRunner.getScenariosPassed() == 1) {
-							scenariosPassedTotalMessage("1 scenario passed");
-						} else {
-							scenariosPassedTotalMessage(scenarioRunner.getScenariosPassed() + " scenarios passed");
-						}
-						if (autoSaveDiffs) {
-							if (scenarioRunner.getScenariosAutosaved() == 1) {
-								scenariosAutosavedTotalMessage("1 scenario passed after autosave");
-							} else {
-								scenariosAutosavedTotalMessage(scenarioRunner.getScenariosAutosaved() + " scenarios passed after autosave");
-							}
-						}
-						if (scenarioRunner.getScenariosFailed() == 1) {
-							scenariosFailedTotalMessage("1 scenario failed");
-						} else {
-							scenariosFailedTotalMessage(scenarioRunner.getScenariosFailed() + " scenarios failed");
-						}
+						scenariosAutosavedTotalMessage(scenarioRunner.getScenariosAutosaved() + " scenarios passed after autosave");
 					}
 				}
-				debugMessage("Start logging to htmlbuffer until form is written");
-				if (!config.isSilent())
-					config.setUseHtmlBuffer(true);
-				writeHtml("<br/><br/>",  false);
-				printHtmlForm(scenariosRootDirectories, scenariosRootDescriptions, currentScenariosRootDirectory, appConstants, allScenarioFiles, waitBeforeCleanUp, timeout, paramExecute);
-				debugMessage("Stop logging to htmlbuffer");
-				if (!config.isSilent())
-					config.setUseHtmlBuffer(false);
-				writeHtml("",  true);
+				if (scenarioRunner.getScenariosFailed().get() == 1) {
+					scenariosFailedTotalMessage("1 scenario failed");
+				} else {
+					scenariosFailedTotalMessage(scenarioRunner.getScenariosFailed() + " scenarios failed");
+				}
 			}
 		}
+		debugMessage("Start logging to htmlbuffer until form is written");
+		if (!config.isSilent())
+			config.setUseHtmlBuffer(true);
+		writeHtml("<br/><br/>",  false);
+		printHtmlForm(scenariosRootDirectories, scenariosRootDescriptions, currentScenariosRootDirectory, appConstants, allScenarioFiles, waitBeforeCleanUp, timeout, paramExecute);
+		debugMessage("Stop logging to htmlbuffer");
+		if (!config.isSilent())
+			config.setUseHtmlBuffer(false);
+		writeHtml("",  true);
 		config.flushWriters();
 		return scenariosFailed;
 	}
@@ -386,7 +390,7 @@ public class LarvaTool {
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TR_STARTING_TAG, false);
 		writeHtml(TD_STARTING_TAG, false);
-		writeHtml("<input type=\"text\" name=\"waitbeforecleanup\" value=\"" + waitBeforeCleanUp + "\">", false);
+		writeHtml("<input type=\"text\" name=\"waitbeforecleanup\" value=\"" + waitBeforeCleanUp + "\"/>", false);
 		writeHtml(TD_CLOSING_TAG, false);
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TABLE_CLOSING_TAG, false);
@@ -399,7 +403,7 @@ public class LarvaTool {
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TR_STARTING_TAG, false);
 		writeHtml(TD_STARTING_TAG, false);
-		writeHtml("<input type=\"text\" name=\"timeout\" value=\"" + (timeout != globalTimeoutMillis ? timeout : globalTimeoutMillis) + "\" title=\"Global timeout for larva scenarios.\">", false);
+		writeHtml("<input type=\"text\" name=\"timeout\" value=\"" + (timeout != globalTimeoutMillis ? timeout : globalTimeoutMillis) + "\" title=\"Global timeout for larva scenarios.\"/>", false);
 		writeHtml(TD_CLOSING_TAG, false);
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TABLE_CLOSING_TAG, false);
@@ -413,13 +417,12 @@ public class LarvaTool {
 		writeHtml(TR_STARTING_TAG, false);
 		writeHtml(TD_STARTING_TAG, false);
 		writeHtml("<select name=\"loglevel\">", false);
-		for (String level : StringUtil.split(LOG_LEVEL_ORDER)) {
-			level = level.substring(1, level.length() - 1);
-			String option = "<option value=\"" + XmlEncodingUtils.encodeChars(level) + "\"";
-			if (config.getLogLevel().equals(level)) {
+		for (LarvaLogLevel level : LarvaLogLevel.values()) {
+			String option = "<option value=\"" + XmlEncodingUtils.encodeChars(level.getName()) + "\"";
+			if (config.getLogLevel() == level) {
 				option = option + " selected";
 			}
-			option = option + ">" + XmlEncodingUtils.encodeChars(level) + "</option>";
+			option = option + ">" + XmlEncodingUtils.encodeChars(level.getName()) + "</option>";
 			writeHtml(option, false);
 		}
 		writeHtml("</select>", false);
@@ -439,7 +442,24 @@ public class LarvaTool {
 		if (config.isAutoScroll()) {
 			writeHtml(" checked", false);
 		}
-		writeHtml(">", false);
+		writeHtml("/>", false);
+		writeHtml(TD_CLOSING_TAG, false);
+		writeHtml(TR_CLOSING_TAG, false);
+		writeHtml(TABLE_CLOSING_TAG, false);
+
+		// Multithreaded checkbox
+		writeHtml("<span style=\"float: left; font-size: 10pt; width: 0px\">&nbsp; &nbsp; &nbsp;</span>", false);
+		writeHtml("<table style=\"float:left;height:50px\">", false);
+		writeHtml(TR_STARTING_TAG, false);
+		writeHtml("<td>Multi Threaded (experimental)</td>", false);
+		writeHtml(TR_CLOSING_TAG, false);
+		writeHtml(TR_STARTING_TAG, false);
+		writeHtml(TD_STARTING_TAG, false);
+		writeHtml("<input type=\"checkbox\" name=\"multithreaded\" value=\"true\"", false);
+		if (config.isMultiThreaded()) {
+			writeHtml(" checked", false);
+		}
+		writeHtml("/>", false);
 		writeHtml(TD_CLOSING_TAG, false);
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TABLE_CLOSING_TAG, false);
@@ -513,7 +533,7 @@ public class LarvaTool {
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TR_STARTING_TAG, false);
 		writeHtml("<td align=\"right\">", false);
-		writeHtml("<input type=\"submit\" name=\"submit\" value=\"start\" id=\"submit\">", false);
+		writeHtml("<input type=\"submit\" name=\"submit\" value=\"start\" id=\"submit\"/>", false);
 		writeHtml(TD_CLOSING_TAG, false);
 		writeHtml(TR_CLOSING_TAG, false);
 		writeHtml(TABLE_CLOSING_TAG, false);
@@ -523,7 +543,7 @@ public class LarvaTool {
 		config.flushWriters();
 	}
 
-	public void write(String html, boolean isHtmlType, String method, boolean scroll) {
+	public void write(String html, boolean isHtmlType, LarvaLogLevel logLevel, boolean scroll) {
 		if (config.isSilent()) {
 			return;
 		}
@@ -542,16 +562,24 @@ public class LarvaTool {
 		} else if (isHtmlType && config.isUseHtmlBuffer()) {
 			writer = config.getHtmlBuffer();
 		}
-		if (method == null || LOG_LEVEL_ORDER.indexOf("[" + config.getLogLevel() + "]") <= LOG_LEVEL_ORDER.indexOf("[" + method + "]")) {
+		if (logLevel == null || config.getLogLevel().shouldLog(logLevel)) {
 			try {
-				writer.write(html + "\n");
-				if (scroll && config.isAutoScroll()) {
-					writer.write("<script type=\"text/javascript\"><!--\n");
-					writer.write("scrollToBottom();\n");
-					writer.write("--></script>\n");
+				if (config.isMultiThreaded()) {
+					synchronized (writer) { // Needs to be synced to prevent interleaving of messages or that the output stops
+						doWriteHtml(html, scroll, writer);
+					}
+				} else {
+					doWriteHtml(html, scroll, writer);
 				}
-			} catch (IOException e) {
+			} catch (IOException ignored) {
 			}
+		}
+	}
+
+	private void doWriteHtml(String html, boolean scroll, Writer writer) throws IOException {
+		writer.write(html + "\n");
+		if (scroll && config.isAutoScroll()) {
+			writer.write("<script type=\"text/javascript\"><!--\nscrollToBottom();\n--></script>\n");
 		}
 	}
 
@@ -559,64 +587,56 @@ public class LarvaTool {
 		write(html, true, null, scroll);
 	}
 
-	public void writeLog(String html, String method, boolean scroll) {
-		write(html, false, method, scroll);
+	public void writeLog(String html, LarvaLogLevel logLevel, boolean scroll) {
+		write(html, false, logLevel, scroll);
 	}
 
 	public void debugMessage(String message) {
-		String method = "debug";
 		logger.debug(message);
-		writeLog(XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(message)) + "<br/>", method, false);
+		writeLog(XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(message)) + "<br/>", LarvaLogLevel.DEBUG, false);
 	}
 
 	public void debugPipelineMessage(String stepDisplayName, String message, String pipelineMessage) {
 		if (config.isSilent()) return;
-
-		String method = "pipeline messages";
 		config.incrementMessageCounter();
 
-		writeLog("<div class='message container'>", method, false);
-		writeLog("<h4>Step '" + stepDisplayName + "'</h4>", method, false);
-		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), method, false);
-		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", method, false);
-		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(pipelineMessage)) + "</textarea>", method, false);
-		writeLog("</div>", method, false);
+		writeLog("<div class='message container'>", LarvaLogLevel.PIPELINE_MESSAGES, false);
+		writeLog("<h4>Step '" + stepDisplayName + "'</h4>", LarvaLogLevel.PIPELINE_MESSAGES, false);
+		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), LarvaLogLevel.PIPELINE_MESSAGES, false);
+		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", LarvaLogLevel.PIPELINE_MESSAGES, false);
+		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(pipelineMessage)) + "</textarea>", LarvaLogLevel.PIPELINE_MESSAGES, false);
+		writeLog("</div>", LarvaLogLevel.PIPELINE_MESSAGES, false);
 	}
 
 	public void debugPipelineMessagePreparedForDiff(String stepDisplayName, String message, String pipelineMessage) {
 		if (config.isSilent()) return;
-		String method = "pipeline messages prepared for diff";
 		config.incrementMessageCounter();
 
-		writeLog("<div class='message container'>", method, false);
-		writeLog("<h4>Step '" + stepDisplayName + "'</h4>", method, false);
-		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), method, false);
-		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", method, false);
-		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(pipelineMessage) + "</textarea>", method, false);
-		writeLog("</div>", method, false);
+		writeLog("<div class='message container'>", LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
+		writeLog("<h4>Step '" + stepDisplayName + "'</h4>", LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
+		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
+		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
+		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(pipelineMessage) + "</textarea>", LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
+		writeLog("</div>", LarvaLogLevel.PIPELINE_MESSAGES_PREPARED_FOR_DIFF, false);
 	}
 
 	public void wrongPipelineMessage(String message, String pipelineMessage) {
 		if (config.isSilent()) return;
-		String method = "wrong pipeline messages";
 		config.incrementMessageCounter();
 
-		writeLog("<div class='message container'>", method, false);
-		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), method, false);
-		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", method, false);
-		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(pipelineMessage)) + "</textarea>", method, false);
-		writeLog("</div>", method, false);
+		writeLog("<div class='message container'>", LarvaLogLevel.WRONG_PIPELINE_MESSAGES, false);
+		writeLog(writeCommands("messagebox" + config.getMessageCounter(), true, null), LarvaLogLevel.WRONG_PIPELINE_MESSAGES, false);
+		writeLog("<h5>" + XmlEncodingUtils.encodeChars(message) + "</h5>", LarvaLogLevel.WRONG_PIPELINE_MESSAGES, false);
+		writeLog("<textarea cols='100' rows='10' id='messagebox" + config.getMessageCounter() + "'>" + XmlEncodingUtils.encodeChars(XmlEncodingUtils.replaceNonValidXmlCharacters(pipelineMessage)) + "</textarea>", LarvaLogLevel.WRONG_PIPELINE_MESSAGES, false);
+		writeLog("</div>", LarvaLogLevel.WRONG_PIPELINE_MESSAGES, false);
 	}
 
 	public void wrongPipelineMessage(String stepDisplayName, String message, String pipelineMessage, String pipelineMessageExpected) {
 		if (config.isSilent()) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
+			config.writeSilent(message);
 			return;
 		}
-		String method = "wrong pipeline messages";
+		LarvaLogLevel method = LarvaLogLevel.WRONG_PIPELINE_MESSAGES;
 		String formName = "scenario" + config.getScenarioCounter() + "Wpm";
 		String resultBoxId = formName + "ResultBox";
 		String expectedBoxId = formName + "ExpectedBox";
@@ -653,11 +673,10 @@ public class LarvaTool {
 		writeLog("<pre id='" + diffBoxId + "' class='diffBox'></pre>", method, false);
 		writeLog("</div>", method, false);
 
-		String scenarioPassedFailed = "scenario passed/failed";
-		if (LOG_LEVEL_ORDER.indexOf("[" + config.getLogLevel() + "]") == LOG_LEVEL_ORDER.indexOf("[" + scenarioPassedFailed + "]")) {
-			writeLog("<h5 hidden='true'>Difference description:</h5>", scenarioPassedFailed, false);
+		if (config.getLogLevel() == LarvaLogLevel.SCENARIO_PASSED_FAILED) {
+			writeLog("<h5 hidden='true'>Difference description:</h5>", LarvaLogLevel.SCENARIO_PASSED_FAILED, false);
 			writeLog("<p class='diffMessage' hidden='true'>" + XmlEncodingUtils.encodeChars(message) + "</p>",
-					scenarioPassedFailed, true);
+					LarvaLogLevel.SCENARIO_PASSED_FAILED, true);
 		} else {
 			writeLog("<h5>Difference description:</h5>", method, false);
 			writeLog("<p class='diffMessage'>" + XmlEncodingUtils.encodeChars(message)	+ "</p>", method, true);
@@ -669,7 +688,7 @@ public class LarvaTool {
 
 	public void wrongPipelineMessagePreparedForDiff(String stepDisplayName, String pipelineMessagePreparedForDiff, String pipelineMessageExpectedPreparedForDiff) {
 		if (config.isSilent()) return;
-		String method = "wrong pipeline messages prepared for diff";
+		LarvaLogLevel method = LarvaLogLevel.WRONG_PIPELINE_MESSAGES_PREPARED_FOR_DIFF;
 		String formName = "scenario" + config.getScenarioCounter() + "Wpmpfd";
 		String resultBoxId = formName + "ResultBox";
 		String expectedBoxId = formName + "ExpectedBox";
@@ -732,68 +751,46 @@ public class LarvaTool {
 
 	public void scenariosTotalMessage(String message) {
 		if (config.isSilent()) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
+			config.writeSilent(message);
 		} else {
-			String method = "totals";
-			writeLog("<h1 class='total'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", method, true);
+			writeLog("<h1 class='total'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", LarvaLogLevel.TOTALS, true);
 		}
 	}
 
 	public void scenariosPassedTotalMessage(String message) {
 		if (config.isSilent()) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
+			config.writeSilent(message);
 		} else {
-			String method = "totals";
-			writeLog("<h1 class='passed'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", method, true);
+			writeLog("<h1 class='passed'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", LarvaLogLevel.TOTALS, true);
 		}
 	}
 
 	public void scenariosAutosavedTotalMessage(String message) {
 		if (config.isSilent()) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
+			config.writeSilent(message);
 		} else {
-			String method = "totals";
-			writeLog("<h1 class='autosaved'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", method, true);
+			writeLog("<h1 class='autosaved'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", LarvaLogLevel.TOTALS, true);
 		}
 	}
 
 	public void scenariosFailedTotalMessage(String message) {
 		if (config.isSilent()) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
+			config.writeSilent(message);
 		} else {
-			String method = "totals";
-			writeLog("<h1 class='failed'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", method, true);
+			writeLog("<h1 class='failed'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", LarvaLogLevel.TOTALS, true);
 		}
 	}
 
 	public void errorMessage(String message) {
-		String method = "error";
-		writeLog("<h1 class='error'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", method, true);
-		if (config.getSilentOut() != null) {
-			try {
-				config.getSilentOut().write(message);
-			} catch (IOException e) {
-			}
-		}
+		writeLog("<h1 class='error'>" + XmlEncodingUtils.encodeChars(message) + "</h1>", LarvaLogLevel.ERROR, true);
+		config.writeSilent(message);
 	}
 
 	public void errorMessage(String message, Exception exception) {
 		errorMessage(message);
 		if (config.isSilent()) return;
 
-		String method = "error";
+		LarvaLogLevel method = LarvaLogLevel.ERROR;
 		Throwable throwable = exception;
 		while (throwable != null) {
 			StringWriter stringWriter = new StringWriter();
@@ -891,7 +888,20 @@ public class LarvaTool {
 	public List<File> readScenarioFiles(AppConstants appConstants, String scenariosDirectory) {
 		List<File> scenarioFiles = new ArrayList<>();
 		debugMessage("List all files in directory '" + scenariosDirectory + "'");
-		File[] files = new File(scenariosDirectory).listFiles();
+
+		File directory = new File(scenariosDirectory);
+		Path targetPath = directory.toPath().normalize();
+
+		if (!directory.toPath().normalize().startsWith(targetPath)) {
+			String message = "Scenarios directory is outside of the target directory";
+			logger.warn(message);
+			errorMessage(message);
+
+			return scenarioFiles;
+		}
+
+		File[] files = directory.listFiles();
+
 		if (files == null) {
 			debugMessage("Could not read files from directory '" + scenariosDirectory + "'");
 			return scenarioFiles;
@@ -1169,7 +1179,7 @@ public class LarvaTool {
 		pullingJmsListener.setTimeout(10);
 		boolean empty = false;
 		while (!empty) {
-			RawMessageWrapper<javax.jms.Message> rawMessage = null;
+			RawMessageWrapper<jakarta.jms.Message> rawMessage = null;
 			Message message;
 			Map<String, Object> threadContext = null;
 			try {
@@ -1233,9 +1243,12 @@ public class LarvaTool {
 			if (providedCorrelationId == null) {
 				providedCorrelationId = correlationId;
 			}
-			try (Message ignored = jmsSender.sendMessageOrThrow(new Message(fileContent), null)) {
-				debugPipelineMessage(stepDisplayName, "Successfully written to '" + queueName + "':", fileContent);
-				result = RESULT_OK;
+			try (PipeLineSession session = new PipeLineSession()) {
+				session.put(PipeLineSession.CORRELATION_ID_KEY, providedCorrelationId);
+				try (Message ignored = jmsSender.sendMessageOrThrow(new Message(fileContent), session)) {
+					debugPipelineMessage(stepDisplayName, "Successfully written to '" + queueName + "':", fileContent);
+					result = RESULT_OK;
+				}
 			}
 		} catch(TimeoutException e) {
 			errorMessage("Time out sending jms message to '" + queueName + "': " + e.getMessage(), e);
@@ -1277,7 +1290,7 @@ public class LarvaTool {
 		Message message = null;
 		try {
 			threadContext = pullingJmsListener.openThread();
-			RawMessageWrapper<javax.jms.Message> rawMessage = pullingJmsListener.getRawMessage(threadContext);
+			RawMessageWrapper<jakarta.jms.Message> rawMessage = pullingJmsListener.getRawMessage(threadContext);
 			if (rawMessage != null) {
 				message = pullingJmsListener.extractMessage(rawMessage, threadContext);
 				String correlationId = rawMessage.getId(); // NB: Historically this code extracted message-ID then used that as correlation-ID.
@@ -1440,8 +1453,7 @@ public class LarvaTool {
 		String message = null;
 		if (newRecordFound) {
 			FixedQuerySender readQueryFixedQuerySender = (FixedQuerySender) querySendersInfo.get("readQueryQueryFixedQuerySender");
-			try {
-				PipeLineSession session = new PipeLineSession();
+			try (PipeLineSession session = new PipeLineSession()) {
 				session.put(PipeLineSession.CORRELATION_ID_KEY, correlationId);
 				message = readQueryFixedQuerySender.sendMessageOrThrow(getQueryFromSender(readQueryFixedQuerySender), session).asString();
 			} catch(TimeoutException e) {
@@ -1542,12 +1554,15 @@ public class LarvaTool {
 		if (fileName.endsWith(".xml") || fileName.endsWith(".wsdl")) {
 			// Determine the encoding the XML way but don't use an XML parser to
 			// read the file and transform it to a string to prevent changes in
-			// formatting and prevent adding an xml declaration where this is
+			// formatting and prevent adding a xml declaration where this is
 			// not present in the file. For example, when using a
 			// WebServiceSender to send a message to a WebServiceListener the
-			// xml message must not contain an xml declaration.
+			// xml message must not contain a xml declaration.
 			try (InputStream in = new FileInputStream(fileName)) {
 				XMLInputFactory factory = XMLInputFactory.newInstance();
+				factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+				factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+
 				XMLStreamReader parser = factory.createXMLStreamReader(in);
 				encoding = parser.getEncoding();
 				parser.close();
@@ -1613,7 +1628,7 @@ public class LarvaTool {
 
 		String extension = FileUtils.getFileNameExtension(originalFileName);
 
-		File tempFile = FileUtils.createTempFile("." + extension);
+		Path tempFile = createTempFile("." + extension);
 		String tempFileMessage;
 		if ("XML".equalsIgnoreCase(extension)) {
 			tempFileMessage = XmlUtils.canonicalize(content);
@@ -1621,19 +1636,31 @@ public class LarvaTool {
 			tempFileMessage = content;
 		}
 
-		OutputStreamWriter outputStreamWriter = new OutputStreamWriter(new FileOutputStream(tempFile, true), encoding);
-		outputStreamWriter.write(tempFileMessage);
-		outputStreamWriter.close();
+		try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(Files.newOutputStream(tempFile, StandardOpenOption.APPEND), encoding)) {
+			outputStreamWriter.write(tempFileMessage);
+		}
 
-		return tempFile;
+		return tempFile.toFile();
+	}
+
+	/**
+	 * Creates a temporary file inside the ${ibis.tmpdir} using the specified extension.
+	 */
+	private static Path createTempFile(final String extension) throws IOException {
+		final Path tempDir = TemporaryDirectoryUtils.getTempDirectory();
+		final String suffix = StringUtils.isNotEmpty(extension) ? extension : ".tmp";
+		final String prefix = "frank";
+		LogUtil.getLogger(LarvaTool.class).debug("creating tempfile prefix [{}] suffix [{}] directory [{}]", prefix, suffix, tempDir);
+		return Files.createTempFile(tempDir, prefix, suffix);
 	}
 
 	// Used by saveResultToFile.jsp
 	public static void writeFile(String fileName, String content) throws IOException {
 		String encoding = getEncoding(fileName, content);
-		OutputStreamWriter outputStreamWriter = new OutputStreamWriter(new FileOutputStream(fileName), encoding);
-		outputStreamWriter.write(content);
-		outputStreamWriter.close();
+
+		try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(new FileOutputStream(fileName), encoding)) {
+			outputStreamWriter.write(content);
+		}
 	}
 
 	private static String getEncoding(String fileName, String content) {
@@ -2238,75 +2265,51 @@ public class LarvaTool {
 		while (!processed) {
 			String name = properties.getProperty(property + _param + i + _name);
 			if (name != null) {
-				Object value;
 				String type = properties.getProperty(property + _param + i + _type);
-				if ("httpResponse".equals(type)) {
-					String outputFile;
-					String filename = properties.getProperty(property + _param + i + ".filename");
+				String propertyValue = properties.getProperty(property + _param + i + ".value");
+				Object value = propertyValue;
+
+				if (value == null) {
+					String filename = properties.getProperty(property + _param + i + ".valuefile.absolutepath");
 					if (filename != null) {
-						outputFile = properties.getProperty(property + _param + i + ".filename.absolutepath");
+						value = new FileMessage(new File(filename));
 					} else {
-						outputFile = properties.getProperty(property + _param + i + ".outputfile");
-					}
-					HttpServletResponseMock httpServletResponseMock = new HttpServletResponseMock();
-					httpServletResponseMock.setOutputFile(outputFile);
-					value = httpServletResponseMock;
-				} else {
-					value = properties.getProperty(property + _param + i + ".value");
-					if (value == null) {
-						String filename = properties.getProperty(property + _param + i + ".valuefile.absolutepath");
-						if (filename != null) {
-							value = new FileMessage(new File(filename));
-						} else {
-							String inputStreamFilename = properties.getProperty(property + _param + i + ".valuefileinputstream.absolutepath");
-							if (inputStreamFilename != null) {
-								errorMessage("valuefileinputstream is no longer supported use valuefile instead");
-							}
+						String inputStreamFilename = properties.getProperty(property + _param + i + ".valuefileinputstream.absolutepath");
+						if (inputStreamFilename != null) {
+							errorMessage("valuefileinputstream is no longer supported use valuefile instead");
 						}
 					}
 				}
 				if ("node".equals(type)) {
 					try {
-						value = XmlUtils.buildNode(Message.asString(value), true);
-					} catch (DomBuilderException | IOException e) {
+						value = XmlUtils.buildNode(propertyValue, true);
+					} catch (DomBuilderException e) {
 						errorMessage("Could not build node for parameter '" + name + "' with value: " + value, e);
 					}
 				} else if ("domdoc".equals(type)) {
 					try {
-						value = XmlUtils.buildDomDocument(Message.asString(value), true);
-					} catch (DomBuilderException | IOException e) {
+						value = XmlUtils.buildDomDocument(propertyValue, true);
+					} catch (DomBuilderException e) {
 						errorMessage("Could not build node for parameter '" + name + "' with value: " + value, e);
 					}
 				} else if ("list".equals(type)) {
-					try {
-						List<String> parts = new ArrayList<>(Arrays.asList(Message.asString(value).split("\\s*(,\\s*)+")));
-						List<String> list = new LinkedList<>();
-						for (String part : parts) {
-							list.add(part);
-						}
-						value = list;
-					} catch (IOException e) {
-						errorMessage("Could not build a list for parameter '" + name + "' with value: " + value, e);
-					}
+					value = StringUtil.split(propertyValue);
 				} else if ("map".equals(type)) {
-					try {
-						List<String> parts = new ArrayList<>(Arrays.asList(Message.asString(value).split("\\s*(,\\s*)+")));
-						Map<String, String> map = new LinkedHashMap<>();
-						for (String part : parts) {
-							String[] splitted = part.split("\\s*(=\\s*)+", 2);
-							if (splitted.length==2) {
-								map.put(splitted[0], splitted[1]);
-							} else {
-								map.put(splitted[0], "");
-							}
+					List<String> parts = StringUtil.split(propertyValue);
+					Map<String, String> map = new LinkedHashMap<>();
+
+					for (String part : parts) {
+						String[] splitted = part.split("\\s*(=\\s*)+", 2);
+						if (splitted.length==2) {
+							map.put(splitted[0], splitted[1]);
+						} else {
+							map.put(splitted[0], "");
 						}
-						value = map;
-					} catch (IOException e) {
-						errorMessage("Could not build a map for parameter '" + name + "' with value: " + value, e);
 					}
+					value = map;
 				}
 				if (createParameterObjects) {
-					String  pattern = properties.getProperty(property + _param + i + ".pattern");
+					String pattern = properties.getProperty(property + _param + i + ".pattern");
 					if (value == null && pattern == null) {
 						errorMessage("Property '" + property + _param + i + " doesn't have a value or pattern");
 					} else {
@@ -2350,10 +2353,10 @@ public class LarvaTool {
 			BufferedReader br = new BufferedReader(reader);
 			String l;
 			while ((l = br.readLine()) != null) {
-				if (sb.length()==0) {
+				if (sb.isEmpty()) {
 					sb.append(l);
 				} else {
-					sb.append(System.getProperty("line.separator") + l);
+					sb.append(System.getProperty("line.separator")).append(l);
 				}
 			}
 			br.close();
@@ -2384,7 +2387,7 @@ public class LarvaTool {
 
 			// Extract ignore type
 			String ignore = key.split(Pattern.quote("."))[0];
-			ArrayList<String> attributes = findAttributesForIgnore(ignore);
+			List<String> attributes = findAttributesForIgnore(ignore);
 
 			if(attributes != null){
 				// Extract identifier
@@ -2433,40 +2436,18 @@ public class LarvaTool {
 	 *
 	 * @param propertyName The name of the ignore we are checking, in the example 'ignoreContentBetweenKeys'
 	*/
-	public static ArrayList<String> findAttributesForIgnore(String propertyName) {
-		ArrayList<String> attributes = null;
-
-		switch (propertyName) {
-			case "decodeUnzipContentBetweenKeys":
-			  	attributes = new ArrayList<>( Arrays.asList("key1", "key2", "replaceNewlines") );
-			  	break;
-			case "canonicaliseFilePathContentBetweenKeys":
-			case "replaceRegularExpressionKeys":
-			case "ignoreContentBetweenKeys":
-			case "ignoreKeysAndContentBetweenKeys":
-			case "removeKeysAndContentBetweenKeys":
-			case "replaceKey":
-			case "formatDecimalContentBetweenKeys":
-			case "replaceEverywhereKey":
-				attributes = new ArrayList<>( Arrays.asList("key1", "key2") );
-				break;
-			case "ignoreRegularExpressionKey":
-			case "removeRegularExpressionKey":
-			case "ignoreContentBeforeKey":
-			case "ignoreContentAfterKey":
-				attributes = new ArrayList<>(List.of("key"));
-				break;
-			case "ignoreCurrentTimeBetweenKeys":
-				attributes = new ArrayList<>( Arrays.asList("key1", "key2", "pattern", "margin", "errorMessageOnRemainingString") );
-				break;
-			case "ignoreKey":
-			case "removeKey":
+	public static List<String> findAttributesForIgnore(String propertyName) {
+		return switch (propertyName) {
+			case "decodeUnzipContentBetweenKeys" -> List.of("key1", "key2", "replaceNewlines");
+			case "canonicaliseFilePathContentBetweenKeys", "replaceRegularExpressionKeys", "ignoreContentBetweenKeys", "ignoreKeysAndContentBetweenKeys",
+				 "removeKeysAndContentBetweenKeys", "replaceKey", "formatDecimalContentBetweenKeys", "replaceEverywhereKey" -> List.of("key1", "key2");
+			case "ignoreRegularExpressionKey", "removeRegularExpressionKey", "ignoreContentBeforeKey", "ignoreContentAfterKey" -> List.of("key");
+			case "ignoreCurrentTimeBetweenKeys" -> List.of("key1", "key2", "pattern", "margin", "errorMessageOnRemainingString");
+			case "ignoreKey", "removeKey" ->
 				// in case of an empty string as attribute, assume it should read the value
 				// ie: ignoreKey.identifier=value
-				attributes = new ArrayList<>(Arrays.asList("key", ""));
-				break;
-		}
-
-		return attributes;
+					List.of("key", "");
+			default -> null;
+		};
 	}
 }

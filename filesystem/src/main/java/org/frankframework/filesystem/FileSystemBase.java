@@ -1,5 +1,5 @@
 /*
-   Copyright 2020 WeAreFrank!
+   Copyright 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import java.nio.file.DirectoryStream;
 import java.util.Iterator;
 
 import org.apache.logging.log4j.Logger;
-
 import org.frankframework.util.LogUtil;
 
 /**
@@ -57,7 +56,7 @@ public abstract class FileSystemBase<F> implements IBasicFileSystem<F> {
 		if (stopAt<0) {
 			stopAt = Integer.MAX_VALUE;
 		}
-		try(DirectoryStream<F> ds = listFiles(folder)) {
+		try(DirectoryStream<F> ds = list(folder, TypeFilter.FILES_ONLY)) {
 			for (Iterator<F> it = ds.iterator(); it.hasNext() && count<=stopAt; it.next()) {
 				count++;
 			}

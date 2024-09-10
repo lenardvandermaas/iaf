@@ -22,9 +22,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.IbisContext;
@@ -94,7 +93,7 @@ public abstract class ClassLoaderUtils {
 				protocols.addAll(toList(allowedProtocols));
 				return getResourceNative(resourceToUse, protocols);
 			} else {
-				if(log.isDebugEnabled()) log.debug("Cannot lookup resource ["+resource+"] in classloader ["+nameOf(classLoader)+"] and no protocol to try as URL");
+				log.debug("Cannot lookup resource [{}] in classloader [{}] and no protocol to try as URL", resource, classLoader);
 			}
 		}
 
@@ -139,24 +138,5 @@ public abstract class ClassLoaderUtils {
 		}
 		//Arrays.asList(..) won't return an empty List when empty.
 		return Arrays.asList(protocolList.split(","));
-	}
-
-	/**
-	 * If the classLoader is derivable of IConfigurationClassLoader return the className + configurationName,
-	 * else return the className of the object. Don't return the package name to avoid cluttering the logs.
-	 */
-	public static String nameOf(ClassLoader classLoader) {
-		if(classLoader == null) {
-			return "<null>";
-		}
-
-		String logPrefix = ClassUtils.nameOf(classLoader) + "@" + Integer.toHexString(classLoader.hashCode());
-		if(classLoader instanceof IConfigurationClassLoader loader) {
-			String configurationName = loader.getConfigurationName();
-			if(StringUtils.isNotEmpty(configurationName)) {
-				logPrefix += "["+configurationName+"]";
-			}
-		}
-		return logPrefix;
 	}
 }

@@ -27,19 +27,18 @@ import java.util.Vector;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
-
 import org.frankframework.configuration.ApplicationWarnings;
 import org.frankframework.configuration.ClassLoaderException;
 import org.frankframework.configuration.ConfigurationUtils;
 import org.frankframework.configuration.IbisContext;
 import org.frankframework.util.AppConstants;
-import org.frankframework.util.ClassLoaderUtils;
+import org.frankframework.util.ClassUtils;
 import org.frankframework.util.LogUtil;
-
 import org.frankframework.util.StreamUtil;
 import org.springframework.cglib.core.ReflectUtils;
 import org.springframework.core.SmartClassLoader;
-import org.springframework.lang.Nullable;
+
+import jakarta.annotation.Nullable;
 
 /**
  * Abstract base class for for IBIS Configuration ClassLoaders.
@@ -86,13 +85,13 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 			if (i != -1) { //Configuration file contains a path, derive the BasePath from the path
 				setBasePath(configurationFile.substring(0, i + 1));
 				setConfigurationFile(configurationFile.substring(i + 1));
-				log.info("derived basepath ["+getBasePath()+"] from configurationFile ["+configurationFile+"]");
+				log.info("derived basepath [{}] from configurationFile [{}]", getBasePath(), configurationFile);
 			} else if(!(getConfigurationName().equalsIgnoreCase(instanceName) && this instanceof WebAppClassLoader)) {
 				setBasePath(getConfigurationName());
 			}
 		}
 
-		log.info("["+getConfigurationName()+"] created classloader ["+this.toString()+"] basepath ["+getBasePath()+"]");
+		log.info("[{}] created classloader [{}] basepath [{}]", getConfigurationName(), this.toString(), getBasePath());
 	}
 
 	/**
@@ -190,7 +189,7 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 
 	/**
 	 * @param name of the file to search for in the current local classpath
-	 * @return the URL of the file if found in the ClassLoader or <code>NULL</code> when the file cannot be found
+	 * @return the URL of the file if found in the ClassLoader or <code>null</code> when the file cannot be found
 	 */
 	public abstract URL getLocalResource(String name);
 
@@ -198,7 +197,7 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 	 * In case of the {@link #getResources(String)} we only want the local paths and not the parent path
 	 * @param name of the file to retrieve
 	 * @param useParent only use local classpath or also traverse down the classpath
-	 * @return the URL of the file if found in the ClassLoader or <code>NULL</code>
+	 * @return the URL of the file if found in the ClassLoader or <code>null</code>
 	 */
 	public URL getResource(String name, boolean useParent) {
 		URL url = null;
@@ -208,12 +207,14 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 		}
 
 		url = getLocalResource(normalizedFilename);
-		if(log.isTraceEnabled()) log.trace("["+getConfigurationName()+"] "+(url==null?"failed to retrieve":"retrieved")+" local resource ["+normalizedFilename+"]");
+		if(log.isTraceEnabled())
+			log.trace("[{}] {} local resource [{}]", getConfigurationName(), url == null ? "failed to retrieve" : "retrieved", normalizedFilename);
 
 		//URL without basepath cannot be found, follow parent hierarchy
 		if(url == null && useParent) {
 			url = getParent().getResource(name);
-			if(log.isTraceEnabled()) log.trace("["+getConfigurationName()+"] "+(url==null?"failed to retrieve":"retrieved")+" resource ["+name+"] from parent");
+			if(log.isTraceEnabled())
+				log.trace("[{}] {} resource [{}] from parent", getConfigurationName(), url == null ? "failed to retrieve" : "retrieved", name);
 		}
 
 		return url;
@@ -237,7 +238,7 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 		//Add all files found in the classpath's parent
 		urls.addAll(Collections.list(getParent().getResources(name)));
 
-		if(log.isTraceEnabled()) log.trace("["+getConfigurationName()+"] retrieved files ["+name+"] found urls " + urls);
+		if(log.isTraceEnabled()) log.trace("[{}] retrieved files [{}] found urls {}", getConfigurationName(), name, urls);
 
 		return urls.elements();
 	}
@@ -275,9 +276,9 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 	/**
 	 * <p>
 	 * Fixes <code>--add-opens=java.base/java.lang=ALL-UNNAMED</code> problem when loading classes dynamically when CGLIB is enabled.
-	 * See https://github.com/spring-projects/spring-framework/issues/26403 for more background information.
+	 * See <a href="https://github.com/spring-projects/spring-framework/issues/26403">spring github</a> for more background information.
 	 * </p>
-	 * 
+	 *
 	 * {@inheritDoc}
 	 */
 	@Override
@@ -326,20 +327,27 @@ public abstract class ClassLoaderBase extends ClassLoader implements IConfigurat
 
 	@Override
 	public void reload() throws ClassLoaderException {
-		log.debug("reloading classloader ["+getConfigurationName()+"]");
+		log.debug("reloading classloader [{}]", getConfigurationName());
 
 		AppConstants.removeInstance(this);
 	}
 
 	@Override
 	public void destroy() {
-		log.debug("removing classloader ["+this.toString()+"]");
+		log.debug("removing classloader [{}]", this.toString());
 
 		AppConstants.removeInstance(this);
 	}
 
 	@Override
 	public String toString() {
-		return ClassLoaderUtils.nameOf(this);
+		String logPrefix = ClassUtils.classNameOf(this) + "@" + Integer.toHexString(this.hashCode());
+
+		String configurationName = getConfigurationName();
+		if(StringUtils.isNotEmpty(configurationName)) {
+			logPrefix += "["+configurationName+"]";
+		}
+
+		return logPrefix;
 	}
 }

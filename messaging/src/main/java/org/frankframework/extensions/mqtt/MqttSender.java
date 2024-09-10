@@ -16,16 +16,16 @@
 
 package org.frankframework.extensions.mqtt;
 
-import org.eclipse.paho.client.mqttv3.MqttMessage;
-
+import jakarta.annotation.Nonnull;
 import lombok.extern.log4j.Log4j2;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.ISenderWithParameters;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
 import org.frankframework.core.SenderResult;
 import org.frankframework.core.TimeoutException;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.stream.Message;
 
@@ -65,7 +65,7 @@ public class MqttSender extends MqttFacade implements ISenderWithParameters {
 	}
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList==null) {
 			paramList = new ParameterList();
 		}
@@ -78,7 +78,7 @@ public class MqttSender extends MqttFacade implements ISenderWithParameters {
 	}
 
 	@Override
-	public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+	public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		return new SenderResult(sendMessage(message, session, null));
 	}
 

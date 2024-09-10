@@ -15,19 +15,18 @@
 */
 package org.frankframework.cache;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.IConfigurationAware;
 import org.frankframework.core.PipeLineSession;
-import org.springframework.context.ApplicationContext;
-
-import lombok.Getter;
-import lombok.Setter;
 import org.frankframework.stream.Message;
 import org.frankframework.util.LogUtil;
 import org.frankframework.util.TransformerPool;
 import org.frankframework.util.TransformerPool.OutputType;
+import org.springframework.context.ApplicationContext;
 
 /**
  * Baseclass for caching.
@@ -39,7 +38,7 @@ import org.frankframework.util.TransformerPool.OutputType;
  */
 public abstract class CacheAdapterBase<V> implements ICache<String,V>, IConfigurationAware {
 	protected Logger log = LogUtil.getLogger(this);
-	private @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
+	private final @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
 	private @Getter @Setter ApplicationContext applicationContext;
 
 	private @Getter String name;
@@ -88,7 +87,7 @@ public abstract class CacheAdapterBase<V> implements ICache<String,V>, IConfigur
 			try {
 				input=keyTp.transform(input, null);
 			} catch (Exception e) {
-				log.error(getLogPrefix()+"cannot determine cache key",e);
+				log.error("{}cannot determine cache key", getLogPrefix(), e);
 			}
 		}
 		if (StringUtils.isEmpty(input)) {
@@ -108,9 +107,9 @@ public abstract class CacheAdapterBase<V> implements ICache<String,V>, IConfigur
 		}
 		if (valueTp!=null) {
 			try{
-				value=new Message(valueTp.transform(value, null));
+				value = valueTp.transform(value, null);
 			} catch (Exception e) {
-				log.error(getLogPrefix() + "transformValue() cannot transform cache value [" + value + "], will not cache", e);
+				log.error("{}transformValue() cannot transform cache value [{}], will not cache", getLogPrefix(), value, e);
 				return null;
 			}
 		}
@@ -165,7 +164,7 @@ public abstract class CacheAdapterBase<V> implements ICache<String,V>, IConfigur
 		this.keyXPathOutputType = keyXPathOutputType;
 	}
 
-	/** namespace defintions for keyxpath. must be in the form of a comma or space separated list of <code>prefix=namespaceuri</code>-definitions */
+	/** namespace defintions for keyxpath. must be in the form of a comma or space separated list of <code>prefix=namespaceuri</code> definitions */
 	public void setKeyNamespaceDefs(String keyNamespaceDefs) {
 		this.keyNamespaceDefs = keyNamespaceDefs;
 	}
@@ -196,7 +195,7 @@ public abstract class CacheAdapterBase<V> implements ICache<String,V>, IConfigur
 		this.valueXPathOutputType = valueXPathOutputType;
 	}
 
-	/** namespace defintions for valuexpath. must be in the form of a comma or space separated list of <code>prefix=namespaceuri</code>-definitions */
+	/** namespace defintions for valuexpath. must be in the form of a comma or space separated list of <code>prefix=namespaceuri</code> definitions */
 	public void setValueNamespaceDefs(String valueNamespaceDefs) {
 		this.valueNamespaceDefs = valueNamespaceDefs;
 	}

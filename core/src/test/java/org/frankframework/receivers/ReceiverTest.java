@@ -1,5 +1,5 @@
 /*
-   Copyright 2022-2023 WeAreFrank!
+   Copyright 2022-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -46,6 +46,7 @@ import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Semaphore;
@@ -55,19 +56,22 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.jms.Destination;
-import javax.jms.TextMessage;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 
-import lombok.SneakyThrows;
+import jakarta.jms.Destination;
+import jakarta.jms.TextMessage;
+import lombok.Lombok;
 import org.apache.logging.log4j.Logger;
 import org.frankframework.core.Adapter;
 import org.frankframework.core.IListener;
@@ -86,7 +90,7 @@ import org.frankframework.jms.JMSFacade;
 import org.frankframework.jms.MessagingSource;
 import org.frankframework.jms.PushingJmsListener;
 import org.frankframework.jta.narayana.NarayanaJtaTransactionManager;
-import org.frankframework.management.IbisAction;
+import org.frankframework.management.Action;
 import org.frankframework.pipes.EchoPipe;
 import org.frankframework.stream.Message;
 import org.frankframework.stream.MessageContext;
@@ -94,6 +98,7 @@ import org.frankframework.testutil.TestAppender;
 import org.frankframework.testutil.TestAssertions;
 import org.frankframework.testutil.TestConfiguration;
 import org.frankframework.testutil.TransactionManagerType;
+import org.frankframework.testutil.mock.DataSourceFactoryMock;
 import org.frankframework.util.LogUtil;
 import org.frankframework.util.MessageKeeperMessage;
 import org.frankframework.util.RunState;
@@ -104,11 +109,13 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.jta.JtaTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 
+@Tag("slow")
 public class ReceiverTest {
 	public static final DefaultTransactionDefinition TRANSACTION_DEFINITION = new DefaultTransactionDefinition(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	protected static final Logger LOG = LogUtil.getLogger(ReceiverTest.class);
 	private TestConfiguration configuration;
 	private TestAppender appender;
+	private String adapterName;
 
 	@BeforeAll
 	static void beforeAll() {
@@ -116,10 +123,15 @@ public class ReceiverTest {
 		TransactionManagerType.closeAllConfigurationContexts();
 	}
 
+	@BeforeEach
+	public void beforeEach(TestInfo testInfo) {
+		adapterName = testInfo.getDisplayName().replace('/', '_');
+	}
+
 	@AfterEach
+	@Timeout(value = 10, unit = TimeUnit.SECONDS) //Unfortunately this doesn't work on other threads
 	void tearDown() {
 		if (configuration != null) {
-			configuration.stop();
 			configuration.close();
 			configuration = null;
 		}
@@ -172,7 +184,7 @@ public class ReceiverTest {
 	public <M> Adapter setupAdapter(Receiver<M> receiver, ExitState exitState) throws Exception {
 
 		Adapter adapter = spy(configuration.createBean(Adapter.class));
-		adapter.setName("ReceiverTestAdapterName");
+		adapter.setName(adapterName);
 
 		PipeLine pl = spy(configuration.createBean(PipeLine.class));
 		doAnswer(p -> {
@@ -212,6 +224,7 @@ public class ReceiverTest {
 	public MessageStoreListener<String> setupMessageStoreListener() throws Exception {
 		Connection connection = mock(Connection.class);
 		MessageStoreListener<String> listener = spy(new MessageStoreListener<>());
+		listener.setDataSourceFactory(new DataSourceFactoryMock());
 		listener.setConnectionsArePooled(true);
 		doReturn(connection).when(listener).getConnection();
 		listener.setSessionKeys("ANY-KEY");
@@ -225,7 +238,9 @@ public class ReceiverTest {
 	}
 
 	public ITransactionalStorage<Serializable> setupErrorStorage() {
-		return mock(JdbcTransactionalStorage.class);
+		JdbcTransactionalStorage txStorage = mock(JdbcTransactionalStorage.class);
+		txStorage.setDataSourceFactory(new DataSourceFactoryMock());
+		return txStorage;
 	}
 
 	public static Stream<Arguments> transactionManagers() {
@@ -270,9 +285,9 @@ public class ReceiverTest {
 		messagingSourceField.set(listener, messagingSource);
 
 		@SuppressWarnings("unchecked")
-		IListenerConnector<javax.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
+		IListenerConnector<jakarta.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
 		listener.setJmsConnector(jmsConnectorMock);
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		receiver.setErrorStorage(errorStorage);
 
 		final JtaTransactionManager txManager = configuration.getBean(JtaTransactionManager.class);
@@ -302,7 +317,7 @@ public class ReceiverTest {
 		doReturn(receiver.getMaxDeliveries() + 1).when(jmsMessage).getIntProperty("JMSXDeliveryCount");
 		doReturn(Collections.emptyEnumeration()).when(jmsMessage).getPropertyNames();
 		doReturn("message").when(jmsMessage).getText();
-		RawMessageWrapper<javax.jms.Message> messageWrapper = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
+		RawMessageWrapper<jakarta.jms.Message> messageWrapper = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
 
 
 		final int NR_TIMES_MESSAGE_OFFERED = 5;
@@ -315,7 +330,6 @@ public class ReceiverTest {
 
 		final Semaphore semaphore = new Semaphore(0);
 		Thread mockListenerThread = new Thread("mock-listener-thread") {
-			@SneakyThrows({SenderException.class, IllegalAccessException.class, IllegalArgumentException.class})
 			@Override
 			public void run() {
 				try {
@@ -353,6 +367,8 @@ public class ReceiverTest {
 							retryIntervalField.set(receiver, 2); // To avoid test taking too long.
 						}
 					}
+				} catch (SenderException | IllegalAccessException| IllegalArgumentException e) {
+					throw Lombok.sneakyThrow(e);
 				} finally {
 					semaphore.release();
 				}
@@ -397,9 +413,9 @@ public class ReceiverTest {
 		messagingSourceField.set(listener, messagingSource);
 
 		@SuppressWarnings("unchecked")
-		IListenerConnector<javax.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
+		IListenerConnector<jakarta.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
 		listener.setJmsConnector(jmsConnectorMock);
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		receiver.setErrorStorage(errorStorage);
 		receiver.setMessageLog(messageLog);
 
@@ -444,7 +460,7 @@ public class ReceiverTest {
 		doAnswer(invocation -> rolledBackTXCounter.get() + 1).when(jmsMessage).getIntProperty("JMSXDeliveryCount");
 		doReturn(Collections.emptyEnumeration()).when(jmsMessage).getPropertyNames();
 		doReturn("message").when(jmsMessage).getText();
-		RawMessageWrapper<javax.jms.Message> messageWrapper = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
+		RawMessageWrapper<jakarta.jms.Message> messageWrapper = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
 
 		ArgumentCaptor<String> messageIdCaptor = forClass(String.class);
 		ArgumentCaptor<String> correlationIdCaptor = forClass(String.class);
@@ -452,7 +468,6 @@ public class ReceiverTest {
 
 		final Semaphore semaphore = new Semaphore(0);
 		Thread mockListenerThread = new Thread("mock-listener-thread") {
-			@SneakyThrows({SenderException.class, IllegalArgumentException.class, IllegalAccessException.class})
 			@Override
 			public void run() {
 				try {
@@ -490,6 +505,8 @@ public class ReceiverTest {
 							retryIntervalField.set(receiver, 2); // To avoid test taking too long.
 						}
 					}
+				} catch (SenderException | IllegalAccessException| IllegalArgumentException e) {
+					throw Lombok.sneakyThrow(e);
 				} finally {
 					semaphore.release();
 				}
@@ -535,9 +552,9 @@ public class ReceiverTest {
 		messagingSourceField.set(listener, messagingSource);
 
 		@SuppressWarnings("unchecked")
-		IListenerConnector<javax.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
+		IListenerConnector<jakarta.jms.Message> jmsConnectorMock = mock(IListenerConnector.class);
 		listener.setJmsConnector(jmsConnectorMock);
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		receiver.setErrorStorage(errorStorage);
 		receiver.setMessageLog(messageLog);
 
@@ -546,7 +563,7 @@ public class ReceiverTest {
 		doAnswer(invocation -> 5).when(jmsMessage).getIntProperty("JMSXDeliveryCount");
 		doReturn(Collections.emptyEnumeration()).when(jmsMessage).getPropertyNames();
 		doReturn("message").when(jmsMessage).getText();
-		RawMessageWrapper<javax.jms.Message> rawMessage = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
+		RawMessageWrapper<jakarta.jms.Message> rawMessage = new RawMessageWrapper<>(jmsMessage, "dummy-message-id", "dummy-cid");
 
 		// Act
 		int result = receiver.getDeliveryCount(rawMessage);
@@ -610,7 +627,7 @@ public class ReceiverTest {
 		// Arrange
 		String rawTestMessage = "TEST";
 		RawMessageWrapper<String> rawTestMessageWrapper = new RawMessageWrapper<>(rawTestMessage, "mid", "cid");
-		Message testMessage = Message.asMessage(new StringReader(rawTestMessage));
+		Message testMessage = new Message(new StringReader(rawTestMessage));
 
 		configuration = buildNarayanaTransactionManagerConfiguration();
 		ITransactionalStorage<Serializable> errorStorage = setupErrorStorage();
@@ -644,7 +661,7 @@ public class ReceiverTest {
 			assertTrue(result.isRequestOfType(Reader.class), "Result message should be of type Reader");
 			assertEquals("TEST", result.asString());
 		} finally {
-			configuration.getIbisManager().handleAction(IbisAction.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+			configuration.getIbisManager().handleAction(Action.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 		}
 	}
 
@@ -672,7 +689,7 @@ public class ReceiverTest {
 
 		PipeLineResult plr = new PipeLineResult();
 		plr.setState(ExitState.SUCCESS);
-		plr.setResult(Message.asMessage(testMessage));
+		plr.setResult(new Message(testMessage));
 		doReturn(plr).when(adapter).processMessageWithExceptions(any(), messageCaptor.capture(), sessionCaptor.capture());
 
 		// Act
@@ -685,7 +702,7 @@ public class ReceiverTest {
 		assertTrue(pipeLineSession.containsKey("ANY-KEY"));
 		assertEquals("ANY-KEY-VALUE", pipeLineSession.get("ANY-KEY"));
 
-		configuration.getIbisManager().handleAction(IbisAction.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 	}
 
 	@Test
@@ -701,7 +718,7 @@ public class ReceiverTest {
 	}
 
 	public void testStartNoTimeout(SlowListenerBase listener) throws Exception {
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		Adapter adapter = setupAdapter(receiver);
 
 		assertEquals(RunState.STOPPED, adapter.getRunState());
@@ -739,7 +756,7 @@ public class ReceiverTest {
 	}
 
 	public void testStartTimeout(SlowListenerBase listener) throws Exception {
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		receiver.setStartTimeout(1);
 		Adapter adapter = setupAdapter(receiver);
 
@@ -765,7 +782,7 @@ public class ReceiverTest {
 						.until(()-> receiver.getSender().isSynchronous());
 		assertTrue(receiver.getSender().isSynchronous(), "Close has not been called on the Receiver's sender!"); //isSynchronous ==> isClosed
 
-		configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 		await()
 				.atMost(10, TimeUnit.SECONDS)
 				.pollInterval(100, TimeUnit.MILLISECONDS)
@@ -785,7 +802,7 @@ public class ReceiverTest {
 		// Arrange
 		configuration = buildConfiguration(null);
 		SlowListenerBase listener = setupSlowStartPushingListener(1_000);
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		Adapter adapter = setupAdapter(receiver);
 
 		appender = TestAppender.newBuilder().build();
@@ -805,7 +822,7 @@ public class ReceiverTest {
 		assertEquals(RunState.STARTING, receiver.getRunState());
 
 		// Act
-		configuration.getIbisManager().handleAction(IbisAction.STOPADAPTER, configuration.getName(), adapter.getName(), null, null, true);
+		configuration.getIbisManager().handleAction(Action.STOPADAPTER, configuration.getName(), adapter.getName(), null, null, true);
 		await()
 				.atMost(5, TimeUnit.SECONDS)
 				.pollInterval(1, TimeUnit.SECONDS)
@@ -839,7 +856,7 @@ public class ReceiverTest {
 	@Test
 	public void testStopAdapterAfterStopReceiverWithException() throws Exception {
 		configuration = buildNarayanaTransactionManagerConfiguration();
-		Receiver<javax.jms.Message> receiver = setupReceiver(setupSlowStopPushingListener(100_000));
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(setupSlowStopPushingListener(100_000));
 		Adapter adapter = setupAdapter(receiver);
 
 		assertEquals(RunState.STOPPED, adapter.getRunState());
@@ -856,7 +873,7 @@ public class ReceiverTest {
 		LOG.info("Receiver RunState "+receiver.getRunState());
 		waitForState(receiver, RunState.STARTED); //Don't continue until the receiver has been started.
 
-		configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 
 		waitWhileInState(receiver, RunState.STARTED);
 		waitWhileInState(receiver, RunState.STOPPING);
@@ -866,7 +883,7 @@ public class ReceiverTest {
 		assertEquals(RunState.STARTED, adapter.getRunState());
 
 		new Thread(
-				()-> configuration.getIbisManager().handleAction(IbisAction.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true),
+				()-> configuration.getIbisManager().handleAction(Action.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true),
 				"Stopping Adapter Async")
 				.start();
 		await()
@@ -878,7 +895,7 @@ public class ReceiverTest {
 	}
 
 	public void testStopTimeout(SlowListenerBase listener) throws Exception {
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		Adapter adapter = setupAdapter(receiver);
 		receiver.setStopTimeout(1);
 
@@ -896,7 +913,7 @@ public class ReceiverTest {
 		LOG.info("Receiver RunState "+receiver.getRunState());
 		waitForState(receiver, RunState.STARTED); //Don't continue until the receiver has been started.
 
-		configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 
 		waitWhileInState(receiver, RunState.STARTED);
 		waitWhileInState(receiver, RunState.STOPPING);
@@ -915,7 +932,7 @@ public class ReceiverTest {
 		listener.setPollGuardInterval(1_000);
 		listener.setMockLastPollDelayMs(10_000); // Last Poll always before PollGuard triggered
 
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		Adapter adapter = setupAdapter(receiver);
 
 		assertEquals(RunState.STOPPED, adapter.getRunState());
@@ -945,7 +962,7 @@ public class ReceiverTest {
 		// Assert
 		assertEquals(RunState.EXCEPTION_STARTING, receiver.getRunState());
 
-		List<String> errors = adapter.getMessageKeeper()
+		List<String> errors = new ArrayList<>(adapter.getMessageKeeper())
 				.stream()
 				.filter(msg -> msg != null && "ERROR".equals(msg.getMessageLevel()))
 				.map(Object::toString)
@@ -954,7 +971,7 @@ public class ReceiverTest {
 		assertThat(errors, hasItem(containsString("Failed to restart receiver")));
 
 		// After
-		configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 
 		waitWhileInState(receiver, RunState.STARTED);
 		waitWhileInState(receiver, RunState.STOPPING);
@@ -971,7 +988,7 @@ public class ReceiverTest {
 		listener.setPollGuardInterval(1_000);
 		listener.setMockLastPollDelayMs(10_000); // Last Poll always before PollGuard triggered
 
-		Receiver<javax.jms.Message> receiver = setupReceiver(listener);
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(listener);
 		Adapter adapter = setupAdapter(receiver);
 
 		assertEquals(RunState.STOPPED, adapter.getRunState());
@@ -1000,7 +1017,7 @@ public class ReceiverTest {
 		// Receiver may be in state "stopping" (by PollGuard) or in state "starting" while we come out of sleep, so wait until it's started
 		waitForState(receiver, RunState.STARTED);
 
-		configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 
 		waitWhileInState(receiver, RunState.STARTED);
 		waitWhileInState(receiver, RunState.STOPPING);
@@ -1008,7 +1025,7 @@ public class ReceiverTest {
 
 		assertEquals(RunState.EXCEPTION_STOPPING, receiver.getRunState());
 
-		List<String> warnings = adapter.getMessageKeeper()
+		List<String> warnings = new ArrayList<>(adapter.getMessageKeeper())
 				.stream()
 				.filter(msg -> msg instanceof MessageKeeperMessage && "WARN".equals(msg.getMessageLevel()))
 				.map(Object::toString)
@@ -1019,7 +1036,7 @@ public class ReceiverTest {
 	@Test
 	public void startReceiver() throws Exception {
 		configuration = buildConfiguration(null);
-		Receiver<javax.jms.Message> receiver = setupReceiver(setupSlowStartPullingListener(10_000));
+		Receiver<jakarta.jms.Message> receiver = setupReceiver(setupSlowStartPullingListener(10_000));
 		receiver.setStartTimeout(1);
 		Adapter adapter = setupAdapter(receiver);
 
@@ -1044,7 +1061,7 @@ public class ReceiverTest {
 		taskExecutor.execute(()-> {
 			try {
 				LOG.debug("Stopping receiver [{}] from executor-thread.", receiver.getName());
-				configuration.getIbisManager().handleAction(IbisAction.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+				configuration.getIbisManager().handleAction(Action.STOPRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 				waitForState(receiver, RunState.STOPPED);
 
 				if (receiver.getRunState() != RunState.STOPPED) {
@@ -1053,7 +1070,7 @@ public class ReceiverTest {
 				}
 
 				LOG.debug("Restarting receiver [{}] from executor-thread.", receiver.getName());
-				configuration.getIbisManager().handleAction(IbisAction.STARTRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+				configuration.getIbisManager().handleAction(Action.STARTRECEIVER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 				waitForState(receiver, RunState.STARTING, RunState.EXCEPTION_STARTING);
 				waitWhileInState(receiver, RunState.STARTING);
 			} finally {
@@ -1065,7 +1082,7 @@ public class ReceiverTest {
 		assertEquals(RunState.EXCEPTION_STARTING, receiver.getRunState());
 
 		// try to stop the started adapter
-		configuration.getIbisManager().handleAction(IbisAction.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
+		configuration.getIbisManager().handleAction(Action.STOPADAPTER, configuration.getName(), adapter.getName(), receiver.getName(), null, true);
 		waitForState(adapter, RunState.STOPPED);
 
 		assertEquals(RunState.STOPPED, receiver.getRunState());

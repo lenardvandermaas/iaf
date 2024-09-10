@@ -26,7 +26,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.annotation.Nonnull;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -51,6 +50,7 @@ import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.DefaultHostnameVerifier;
@@ -64,11 +64,16 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.pool.ConnPoolControl;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.logging.log4j.Logger;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarning;
+import org.frankframework.core.Adapter;
+import org.frankframework.core.AdapterAware;
+import org.frankframework.core.IConfigurationAware;
 import org.frankframework.core.PipeLineSession;
+import org.frankframework.doc.Unsafe;
 import org.frankframework.encryption.AuthSSLContextFactory;
 import org.frankframework.encryption.HasKeystore;
 import org.frankframework.encryption.HasTruststore;
@@ -76,10 +81,13 @@ import org.frankframework.encryption.KeystoreType;
 import org.frankframework.http.authentication.AuthenticationScheme;
 import org.frankframework.http.authentication.HttpAuthenticationException;
 import org.frankframework.http.authentication.OAuthAccessTokenManager;
+import org.frankframework.http.authentication.OAuthAccessTokenManager.AuthenticationType;
 import org.frankframework.http.authentication.OAuthAuthenticationScheme;
 import org.frankframework.http.authentication.OAuthPreferringAuthenticationStrategy;
-import org.frankframework.http.authentication.OAuthAccessTokenManager.AuthenticationType;
 import org.frankframework.lifecycle.ConfigurableLifecycle;
+import org.frankframework.statistics.FrankMeterType;
+import org.frankframework.statistics.HasStatistics;
+import org.frankframework.statistics.MetricsInitializer;
 import org.frankframework.util.ClassUtils;
 import org.frankframework.util.CredentialFactory;
 import org.frankframework.util.LogUtil;
@@ -87,6 +95,7 @@ import org.frankframework.util.StringUtil;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
 
+import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -111,7 +120,7 @@ import lombok.Setter;
  * </p>
  * <p>
  * Note 3:
- * In case <code>javax.net.ssl.SSLHandshakeException: unknown certificate</code>-exceptions are thrown,
+ * In case <code>javax.net.ssl.SSLHandshakeException: unknown certificate</code> exceptions are thrown,
  * probably the certificate of the other party is not trusted. Try to use one of the certificates in the path as your truststore by doing the following:
  * <ul>
  *   <li>open the URL you are trying to reach in InternetExplorer</li>
@@ -135,19 +144,21 @@ import lombok.Setter;
  * </ul>
  * <p>
  * Note 4:
- * In case <code>cannot create or initialize SocketFactory: (IOException) Unable to verify MAC</code>-exceptions are thrown,
+ * In case <code>cannot create or initialize SocketFactory: (IOException) Unable to verify MAC</code> exceptions are thrown,
  * please check password or authAlias configuration of the corresponding certificate.
  * </p>
  *
- * @author	Niels Meijer
- * @since	7.0
+ * @author Niels Meijer
+ * @since 7.0
  */
-public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeystore, HasTruststore {
+public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeystore, HasTruststore, HasStatistics, AdapterAware {
 	protected final Logger log = LogUtil.getLogger(this);
 
-	private @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
+	private final @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
 	private @Getter @Setter String name;
 	private @Getter @Setter ApplicationContext applicationContext;
+	private @Setter MetricsInitializer configurationMetrics;
+	private @Getter @Setter Adapter adapter;
 
 	/* CONNECTION POOL */
 	private @Getter int timeout = 10_000;
@@ -178,7 +189,7 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 
 	/* PROXY */
 	private @Getter String proxyHost;
-	private @Getter int    proxyPort=80;
+	private @Getter int proxyPort = 80;
 	private @Getter String proxyAuthAlias;
 	private @Getter String proxyUsername;
 	private @Getter String proxyPassword;
@@ -214,13 +225,16 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 	private boolean disableCookies = false;
 
 	private CredentialFactory credentials;
-	private CredentialFactory user_cf;
-	private CredentialFactory client_cf;
+	private CredentialFactory userCf;
+	private CredentialFactory clientCf;
 
 	/**
 	 * Makes sure only http(s) requests can be performed.
 	 */
 	protected URI getURI(@Nonnull String url) throws URISyntaxException {
+		if(StringUtils.isBlank(url)) {
+			throw new URISyntaxException("<null>", "no url provided");
+		}
 		URIBuilder uri = new URIBuilder(url);
 
 		if(uri.getScheme() == null) {
@@ -234,15 +248,13 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 			uri.setPath("/");
 		}
 
-		log.info("created uri: scheme=["+uri.getScheme()+"] host=["+uri.getHost()+"] path=["+uri.getPath()+"]");
+		log.info("created uri: scheme=[{}] host=[{}] path=[{}]", uri.getScheme(), uri.getHost(), uri.getPath());
 		return uri.build();
 	}
 
 	@Override
 	public void configure() throws ConfigurationException {
-		/**
-		 * TODO find out if this really breaks proxy authentication or not.
-		 */
+		// TODO find out if this really breaks proxy authentication or not.
 		defaultHttpClientContext = HttpClientContext.create(); //Only create a new HttpContext when configure is called (which doesn't happen when using a SharedResource)
 //		httpClientBuilder.disableAuthCaching();
 
@@ -255,12 +267,12 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 		AuthSSLContextFactory.verifyKeystoreConfiguration(this, this);
 
 		if (StringUtils.isNotEmpty(getAuthAlias()) || StringUtils.isNotEmpty(getUsername())) {
-			user_cf = new CredentialFactory(getAuthAlias(), getUsername(), getPassword());
-			credentials = user_cf;
+			userCf = new CredentialFactory(getAuthAlias(), getUsername(), getPassword());
+			credentials = userCf;
 		}
-		client_cf = new CredentialFactory(getClientAuthAlias(), getClientId(), getClientSecret());
+		clientCf = new CredentialFactory(getClientAuthAlias(), getClientId(), getClientSecret());
 		if (credentials==null) {
-			credentials = client_cf;
+			credentials = clientCf;
 		}
 		if (StringUtils.isNotEmpty(getTokenEndpoint()) && StringUtils.isEmpty(getClientAuthAlias()) && StringUtils.isEmpty(getClientId())) {
 			throw new ConfigurationException("To obtain accessToken at tokenEndpoint ["+getTokenEndpoint()+"] a clientAuthAlias or ClientId and ClientSecret must be specified");
@@ -294,7 +306,7 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 		if(areCookiesDisabled()) {
 			httpClientBuilder.disableCookieManagement();
 		}
-		httpClientBuilder.evictIdleConnections((long) getConnectionIdleTimeout(), TimeUnit.SECONDS);
+		httpClientBuilder.evictIdleConnections(getConnectionIdleTimeout(), TimeUnit.SECONDS);
 
 		sslSocketFactory = getSSLConnectionSocketFactory(); //Configure it here, so we can handle exceptions
 
@@ -345,17 +357,18 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 	 * In order to support multiThreading and connectionPooling.
 	 * The connectionManager has to be initialized with a sslSocketFactory.
 	 * The pool must be re-created once closed.
+	 *
 	 */
-	public void configureConnectionManager() {
+	private PoolingHttpClientConnectionManager configureAndGetConnectionManager() {
 		int timeToLive = getConnectionTimeToLive();
-		if (timeToLive<=0) {
+		if (timeToLive <= 0) {
 			timeToLive = -1;
 		}
 
 		Registry<ConnectionSocketFactory> socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
-			.register("http", PlainConnectionSocketFactory.getSocketFactory())
-			.register("https", sslSocketFactory)
-			.build();
+				.register("http", PlainConnectionSocketFactory.getSocketFactory())
+				.register("https", sslSocketFactory)
+				.build();
 
 		PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(socketFactoryRegistry, null, null, null, timeToLive, TimeUnit.SECONDS);
 		log.debug("created PoolingHttpClientConnectionManager with custom SSLConnectionSocketFactory");
@@ -368,7 +381,7 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 			connectionManager.setValidateAfterInactivity(getStaleTimeout());
 		}
 
-		httpClientBuilder.setConnectionManager(connectionManager);
+		return connectionManager;
 	}
 
 	@Override
@@ -377,13 +390,47 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 	}
 
 	private void buildHttpClient() {
-		configureConnectionManager();
-		httpClient = httpClientBuilder.build();
+		PoolingHttpClientConnectionManager connectionManager = configureAndGetConnectionManager();
+		httpClientBuilder.setConnectionManager(connectionManager);
+
+		if (getApplicationContext() == null) {
+			// If there's no applicationContext, this is probably a sender created in Larva, we're missing the spring context here
+			// and we can't construct the interceptor. Besides that, it's probably not worth instrumenting either.
+			httpClient = httpClientBuilder.build();
+		} else {
+			// Adapter is not always available, use this instead. Also see `org.frankframework.statistics.MetricsInitializer.getElementType`
+			IConfigurationAware element = (adapter != null) ? adapter : this;
+
+			registerConnectionMetrics(element, connectionManager);
+
+			MicrometerHttpClientInterceptor interceptor = new MicrometerHttpClientInterceptor(configurationMetrics, element,
+					request -> request.getRequestLine().getUri(),
+					true
+			);
+
+			httpClient = httpClientBuilder
+					.addInterceptorFirst(interceptor.getRequestInterceptor())
+					.addInterceptorLast(interceptor.getResponseInterceptor())
+					.build();
+		}
+	}
+
+	/**
+	 * Registers the gauges for httpClient connection metrics.
+	 * @param frankElement
+	 * @param connPoolControl
+	 */
+	private void registerConnectionMetrics(IConfigurationAware frankElement, ConnPoolControl<HttpRoute> connPoolControl) {
+		configurationMetrics.createGauge(frankElement, FrankMeterType.SENDER_HTTP_POOL_MAX, () -> connPoolControl.getTotalStats().getMax());
+		configurationMetrics.createGauge(frankElement, FrankMeterType.SENDER_HTTP_POOL_AVAILABLE, () -> connPoolControl.getTotalStats().getAvailable());
+		configurationMetrics.createGauge(frankElement, FrankMeterType.SENDER_HTTP_POOL_LEASED, () -> connPoolControl.getTotalStats().getLeased());
+		configurationMetrics.createGauge(frankElement, FrankMeterType.SENDER_HTTP_POOL_PENDING, () -> connPoolControl.getTotalStats().getPending());
 	}
 
 	protected void setHttpClient(CloseableHttpClient httpClient) {
 		this.httpClient = httpClient;
 	}
+
 	protected void setHttpContext(HttpClientContext httpContext) {
 		this.defaultHttpClientContext = httpContext;
 	}
@@ -414,20 +461,18 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 			credentialsProvider.setCredentials(new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT), getCredentials());
 
 			AuthenticationScheme preferredAuthenticationScheme = getPreferredAuthenticationScheme();
-			requestConfigBuilder.setTargetPreferredAuthSchemes(Arrays.asList(preferredAuthenticationScheme.getSchemeName()));
+			requestConfigBuilder.setTargetPreferredAuthSchemes(Collections.singletonList(preferredAuthenticationScheme.getSchemeName()));
 			requestConfigBuilder.setAuthenticationEnabled(true);
 
 			if (preferredAuthenticationScheme == AuthenticationScheme.OAUTH) {
 				AuthenticationType authType = isAuthenticatedTokenRequest() ? AuthenticationType.AUTHENTICATION_HEADER : AuthenticationType.REQUEST_PARAMETER;
-				OAuthAccessTokenManager accessTokenManager = new OAuthAccessTokenManager(getTokenEndpoint(), getScope(), client_cf, user_cf==null, authType, this, getTokenExpiry());
+				OAuthAccessTokenManager accessTokenManager = new OAuthAccessTokenManager(getTokenEndpoint(), getScope(), clientCf, userCf == null, authType, this, getTokenExpiry());
 				defaultHttpClientContext.setAttribute(OAuthAuthenticationScheme.ACCESSTOKEN_MANAGER_KEY, accessTokenManager);
 				httpClientBuilder.setTargetAuthenticationStrategy(new OAuthPreferringAuthenticationStrategy());
 			}
 		}
 		if (proxy!=null) {
 			AuthScope authScope = new AuthScope(proxy, proxyRealm, AuthScope.ANY_SCHEME);
-
-
 			if (StringUtils.isNotEmpty(proxyCredentials.getUsername())) {
 				Credentials httpCredentials = new UsernamePasswordCredentials(proxyCredentials.getUsername(), proxyCredentials.getPassword());
 				credentialsProvider.setCredentials(authScope, httpCredentials);
@@ -435,7 +480,7 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 			log.trace("setting credentialProvider [{}]", credentialsProvider);
 
 			if(isPrefillProxyAuthCache()) {
-				requestConfigBuilder.setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.BASIC));
+				requestConfigBuilder.setProxyPreferredAuthSchemes(List.of(AuthSchemes.BASIC));
 
 				AuthCache authCache = defaultHttpClientContext.getAuthCache();
 				if(authCache == null)
@@ -491,8 +536,8 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 		}
 
 		try {
-			javax.net.ssl.SSLSocketFactory socketfactory = AuthSSLContextFactory.createSSLSocketFactory(this, this, protocol);
-			sslConnectionSocketFactory = new SSLConnectionSocketFactory(socketfactory, supportedProtocols, cipherSuites, hostnameVerifier);
+			javax.net.ssl.SSLSocketFactory socketFactory = AuthSSLContextFactory.createSSLSocketFactory(this, this, protocol);
+			sslConnectionSocketFactory = new SSLConnectionSocketFactory(socketFactory, supportedProtocols, cipherSuites, hostnameVerifier);
 		} catch (Exception e) {
 			throw new ConfigurationException("cannot create or initialize SocketFactory", e);
 		}
@@ -744,16 +789,19 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 	}
 
 	@Override
+	@Unsafe
 	public void setVerifyHostname(boolean b) {
 		verifyHostname = b;
 	}
 
+	@Unsafe
 	@Override
 	public void setAllowSelfSignedCertificates(boolean allowSelfSignedCertificates) {
 		this.allowSelfSignedCertificates = allowSelfSignedCertificates;
 	}
 
 	@Override
+	@Unsafe
 	public void setIgnoreCertificateExpiredException(boolean b) {
 		ignoreCertificateExpiredException = b;
 	}
@@ -784,7 +832,7 @@ public abstract class HttpSessionBase implements ConfigurableLifecycle, HasKeyst
 	}
 
 	/**
-	 * Used when StaleChecking=<code>true</code>. Timeout after which an idle connection will be validated before being used.
+	 * Used when <code>staleChecking</code> is <code>true</code>. Timeout after which an idle connection will be validated before being used.
 	 * @ff.default 5000 ms
 	 */
 	public void setStaleTimeout(int timeout) {

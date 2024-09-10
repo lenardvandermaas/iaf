@@ -20,20 +20,20 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Logger;
-import org.springframework.context.ApplicationContext;
-
-import lombok.Getter;
-import lombok.Setter;
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.configuration.ConfigurationWarning;
 import org.frankframework.core.IWithParameters;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.SenderException;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.util.ClassUtils;
 import org.frankframework.util.LogUtil;
 import org.frankframework.util.StringUtil;
+import org.springframework.context.ApplicationContext;
+
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Abstract class that contains functionality for parsing the field values from a
@@ -184,7 +184,7 @@ public abstract class AbstractRecordHandler implements IRecordHandler, IWithPara
 			return false;
 		}
 		if (! equalRecordHandlers) {
-			if (log.isTraceEnabled()) log.trace("isNewRecordType(): equalRecordTypes ["+equalRecordHandlers+"], so returning true");
+			if (log.isTraceEnabled()) log.trace("isNewRecordType(): equalRecordTypes [{}], so returning true", equalRecordHandlers);
 			return true;
 		}
 
@@ -198,7 +198,7 @@ public abstract class AbstractRecordHandler implements IRecordHandler, IWithPara
 			String curField = curRecord.get(i - 1);
 			if (!prevField.equals(curField)) {
 				if (log.isTraceEnabled())
-					log.trace("isNewRecordType(): fields [" + i + "] different previous value [" + prevField + "] current value [" + curField + "], so returning true");
+					log.trace("isNewRecordType(): fields [{}] different previous value [{}] current value [{}], so returning true", i, prevField, curField);
 				return true;
 			}
 		}
@@ -229,7 +229,7 @@ public abstract class AbstractRecordHandler implements IRecordHandler, IWithPara
 			recordIdentifyingFields.add(Integer.parseInt(token));
 		}
 		if (recordIdentifyingFields.isEmpty()) {
-			log.warn("setRecordIdentifyingFields(): value [" + fieldNrs + "] did result in an empty list of tokens");
+			log.warn("setRecordIdentifyingFields(): value [{}] did result in an empty list of tokens", fieldNrs);
 		}
 	}
 
@@ -241,7 +241,7 @@ public abstract class AbstractRecordHandler implements IRecordHandler, IWithPara
 
 
 	@Override
-	public void addParameter(Parameter p) {
+	public void addParameter(IParameter p) {
 		if (paramList==null) {
 			paramList=new ParameterList();
 		}
@@ -272,7 +272,7 @@ public abstract class AbstractRecordHandler implements IRecordHandler, IWithPara
 	}
 
 	/**
-	 * If set <code>true</code>, trailing spaces are removed from each field
+	 * If set to <code>true</code>, trailing spaces are removed from each field
 	 * @ff.default false
 	 */
 	public void setTrim(boolean b) {

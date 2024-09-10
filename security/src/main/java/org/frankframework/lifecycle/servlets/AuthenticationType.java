@@ -23,6 +23,8 @@ public enum AuthenticationType {
 	CONTAINER(JeeAuthenticator.class),
 	IN_MEMORY(InMemoryAuthenticator.class),
 	OAUTH2(OAuth2Authenticator.class),
+	YML(YmlFileAuthenticator.class),
+	YAML(YmlFileAuthenticator.class),
 	NONE(NoOpAuthenticator.class);
 
 	/**
@@ -30,7 +32,7 @@ public enum AuthenticationType {
 	 */
 	private final @Getter Class<? extends IAuthenticator> authenticator;
 
-	private AuthenticationType(Class<? extends IAuthenticator> clazz) {
+	AuthenticationType(Class<? extends IAuthenticator> clazz) {
 		authenticator = clazz;
 	}
 }

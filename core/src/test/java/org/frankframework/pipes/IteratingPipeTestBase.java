@@ -8,6 +8,7 @@ import java.io.IOException;
 
 import org.junit.jupiter.api.Test;
 
+import jakarta.annotation.Nonnull;
 import org.frankframework.core.ISender;
 import org.frankframework.core.PipeLineSession;
 import org.frankframework.core.PipeRunException;
@@ -43,7 +44,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 			String result = "["+message.asString()+"]";
 			resultLog.append(result).append("\n");
 			if (message.asString().contains("error")) {
-				return new SenderResult(Message.asMessage(result), "Error triggered");
+				return new SenderResult(new Message(result), "Error triggered");
 			}
 			return new SenderResult(result);
 		} catch (IOException e) {
@@ -72,7 +73,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 
 	protected class ElementRenderer extends EchoSender {
 		@Override
-		public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException {
+		public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException {
 			return resultCollector(message);
 		}
 	}
@@ -81,7 +82,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 	protected class SlowRenderer extends EchoSender {
 		@Override
 		@SuppressWarnings("java:S2925")
-		public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException {
+		public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException {
 			int random = (int) (Math.random() * 20);
 			try {
 				Thread.sleep(random);
@@ -97,7 +98,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 		String expected = TestFileUtils.getTestFile(expectedFile);
 
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 		prr.getResult().close();
 
 		assertEquals(expected, actual);
@@ -266,7 +267,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 		Message input = MessageTestUtils.getMessage("/IteratingPipe/TenLinesWithErrors.txt");
 
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals("<results count=\"10\"/>", actual);
 	}
@@ -303,7 +304,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 		String expected = TestFileUtils.getTestFile("/IteratingPipe/TenLinesWithErrorsResult.xml");
 
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 
@@ -324,7 +325,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 		Message input = MessageTestUtils.getMessage("/IteratingPipe/TenLinesWithExceptions.txt");
 
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals("<results count=\"10\"/>", actual);
 	}
@@ -361,7 +362,7 @@ public abstract class IteratingPipeTestBase<P extends IteratingPipe<String>> ext
 		String expected = TestFileUtils.getTestFile("/IteratingPipe/TenLinesWithExceptionsResult.xml");
 
 		PipeRunResult prr = doPipe(pipe, input, session);
-		String actual = Message.asString(prr.getResult());
+		String actual = prr.getResult().asString();
 
 		assertEquals(expected, actual);
 

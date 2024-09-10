@@ -32,7 +32,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nullable;
 import javax.xml.stream.XMLEventReader;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -42,6 +41,7 @@ import javax.xml.stream.events.Namespace;
 import javax.xml.stream.events.StartElement;
 import javax.xml.stream.events.XMLEvent;
 
+import jakarta.annotation.Nullable;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.StringUtils;
@@ -171,7 +171,6 @@ public abstract class XSD implements IXSD, Comparable<XSD> {
 					if (a != null) {
 						xsdTargetNamespace = a.getValue();
 					}
-					@SuppressWarnings("unchecked")
 					Iterator<Namespace> nsIterator = el.getNamespaces();
 					// search for default namespace of the schema, i.e. a namespace definition without a prefix
 					while (nsIterator.hasNext() && StringUtils.isEmpty(xsdDefaultNamespace)) {

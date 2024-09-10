@@ -27,11 +27,6 @@ import javax.xml.parsers.SAXParserFactory;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
-import org.xml.sax.Attributes;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-import org.xml.sax.helpers.DefaultHandler;
-
 import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.PipeForward;
 import org.frankframework.core.PipeLineSession;
@@ -44,21 +39,25 @@ import org.frankframework.util.ClassLoaderUtils;
 import org.frankframework.util.StreamUtil;
 import org.frankframework.util.XmlBuilder;
 import org.frankframework.util.XmlUtils;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
 /**
  * Transforms between ascii-ADIOS and an XML representation of ADIOS.
  *
  * <p>
  * Sample xml:<br/>
- * <pre><code>
- * &lt;adios rekenbox="L76HB150"&gt;
- *     &lt;rubriek naam="BER_VERZ_CD" waarde="COMBIFLEX_BELEGGING" /&gt;
- *     &lt;rubriek naam="INBR_CD" waarde="NIEUWE_VERZEKERING" /&gt;
- *     &lt;rubriek naam="PENS_DT_BEP_CD"  waarde="DT_UIT_PENS_LFT" /&gt;
- *     &lt;rubriek nummer="313" naam="AS_OPSL_PRD_TRM_PRM" index="3" recordnr="74" record="VUT_VERZEKERING" waarde="52.34" /&gt;
- * ...
- * &lt;/adios&gt;
- * </code></pre>
+ * <pre>{@code
+ * <adios rekenbox="L76HB150">
+ *     <rubriek naam="BER_VERZ_CD" waarde="COMBIFLEX_BELEGGING" />
+ *     <rubriek naam="INBR_CD" waarde="NIEUWE_VERZEKERING" />
+ *     <rubriek naam="PENS_DT_BEP_CD"  waarde="DT_UIT_PENS_LFT" />
+ *     <rubriek nummer="313" naam="AS_OPSL_PRD_TRM_PRM" index="3" recordnr="74" record="VUT_VERZEKERING" waarde="52.34" />
+ *     ...
+ * </adios>
+ * }</pre>
  * <br/>
  * For input, a 'naam' or a 'nummer'-attribute must be specified. If both are specified, their match is checked.
  * On output, 'nummer', 'naam' and 'waarde'-attributes are always present in each rubriek-element.
@@ -100,7 +99,7 @@ public class Adios2XmlPipe extends FixedForwardPipe {
 	}
 
 	class Xml2AdiosHandler extends DefaultHandler {
-		private StringBuilder result = new StringBuilder(10000);
+		private final StringBuilder result = new StringBuilder(16 * 1024);
 
 		public String getResult() {
 			return result.toString();
@@ -165,14 +164,14 @@ public class Adios2XmlPipe extends FixedForwardPipe {
 				if(recordnr != null) {
 					result.append(recordnr);
 					if(recordindex != null && !"".equals(recordindex))
-						result.append("[" + recordindex + "]");
+						result.append("[").append(recordindex).append("]");
 					result.append(",");
 				}
 				result.append(nummer);
 				if(index != null && !"".equals(index)) {
-					result.append("[" + index + "]");
+					result.append("[").append(index).append("]");
 				}
-				result.append(":" + waarde + ";" + SystemUtils.LINE_SEPARATOR);
+				result.append(":").append(waarde).append(";").append(SystemUtils.LINE_SEPARATOR);
 			} else if("adios".equals(elementName)) {
 				result.append(attributes.getValue("rekenbox") + ":;" + SystemUtils.LINE_SEPARATOR);
 			}
@@ -187,7 +186,7 @@ public class Adios2XmlPipe extends FixedForwardPipe {
 		}
 		if (noConversionForward==null) {
 			noConversionForward=getSuccessForward();
-			log.info("no forward found for ["+getNoConversionForwardName()+"], setting to forward for succes ["+getSuccessForward().getPath()+"]");
+			log.info("no forward found for [{}], setting to forward for success [{}]", getNoConversionForwardName(), getSuccessForward().getPath());
 		}
 		initializeConversionTables();
 	}
@@ -385,7 +384,7 @@ public class Adios2XmlPipe extends FixedForwardPipe {
 				bericht.addSubElement(rubriek);
 			}
 		}
-		return bericht.toXML(true);
+		return bericht.asXmlString();
 	}
 
 	public void addItem(String item, XmlBuilder builder, Map nummer2naam, String naamLabel, String nummerLabel, String indexLabel) {

@@ -1,5 +1,5 @@
 /*
-   Copyright 2013, 2016 Nationale-Nederlanden, 2020-2022 WeAreFrank!
+   Copyright 2013, 2016 Nationale-Nederlanden, 2020-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 package org.frankframework.pipes;
 
 import java.util.HashMap;
-import java.util.Hashtable;
-import java.util.List;
 import java.util.Map;
 
-import javax.annotation.Nullable;
-
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.configuration.Configuration;
 import org.frankframework.configuration.ConfigurationException;
@@ -38,7 +38,7 @@ import org.frankframework.core.TransactionAttributes;
 import org.frankframework.doc.Mandatory;
 import org.frankframework.monitoring.EventPublisher;
 import org.frankframework.monitoring.EventThrowing;
-import org.frankframework.parameters.Parameter;
+import org.frankframework.parameters.IParameter;
 import org.frankframework.parameters.ParameterList;
 import org.frankframework.statistics.HasStatistics;
 import org.frankframework.stream.Message;
@@ -47,9 +47,6 @@ import org.frankframework.util.Locker;
 import org.frankframework.util.SpringUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * Base class for {@link IPipe Pipe}.
@@ -84,7 +81,7 @@ import lombok.Setter;
  * @see PipeLineSession
  */
 public abstract class AbstractPipe extends TransactionAttributes implements IPipe, EventThrowing, ApplicationContextAware, IWithParameters, HasStatistics {
-	private @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
+	private final @Getter ClassLoader configurationClassLoader = Thread.currentThread().getContextClassLoader();
 	private @Getter ApplicationContext applicationContext;
 
 	private @Getter String name;
@@ -177,7 +174,7 @@ public abstract class AbstractPipe extends TransactionAttributes implements IPip
 	 * Add a parameter to the list of parameters
 	 */
 	@Override
-	public void addParameter(Parameter param) {
+	public void addParameter(IParameter param) {
 		log.debug("Pipe [{}] added parameter [{}]", getName(), param);
 		parameterList.add(param);
 	}
@@ -207,7 +204,7 @@ public abstract class AbstractPipe extends TransactionAttributes implements IPip
 				if (forward.getPath()!=null && forward.getPath().equals(current.getPath())) {
 					ConfigurationWarnings.add(this, log, "forward ["+forwardName+"] is already registered");
 				} else {
-					log.info("PipeForward ["+forwardName+"] already registered, pointing to ["+current.getPath()+"]. Ignoring new one, that points to ["+forward.getPath()+"]");
+					log.info("PipeForward [{}] already registered, pointing to [{}]. Ignoring new one, that points to [{}]", forwardName, current.getPath(), forward.getPath());
 				}
 			}
 		} else {
@@ -258,20 +255,17 @@ public abstract class AbstractPipe extends TransactionAttributes implements IPip
 	}
 
 	@Override
-	public Map<String, PipeForward> getForwards(){
-		Map<String, PipeForward> forwards = new Hashtable<>(pipeForwards);
+	@Nonnull
+	public Map<String, PipeForward> getForwards() {
+		Map<String, PipeForward> forwards = new HashMap<>(pipeForwards);
 		PipeLine pipeline = getPipeLine();
-		if (pipeline==null) {
-			return null;
+		if (pipeline == null) {
+			return forwards;
 		}
 
 		//Omit global pipeline-forwards and only return local pipe-forwards
-		List<IPipe> pipes = pipeline.getPipes();
-		for (int i=0; i<pipes.size(); i++) {
-			String pipeName = pipes.get(i).getName();
-			if(forwards.containsKey(pipeName))
-				forwards.remove(pipeName);
-		}
+		pipeline.getPipes()
+				.forEach(pipe -> forwards.remove(pipe.getName()));
 		return forwards;
 	}
 
@@ -413,16 +407,12 @@ public abstract class AbstractPipe extends TransactionAttributes implements IPip
 		secLogSessionKeys = string;
 	}
 
-	/** when set, the value in AppConstants is overwritten (for this pipe only) */
+	@Override
 	public void setLogIntermediaryResults(String string) {
 		logIntermediaryResults = string;
 	}
 
-	/**
-	 * Regular expression to mask strings in the log. For example, the regular expression <code>(?&lt;=&lt;password&gt;).*?(?=&lt;/password&gt;)</code>
-	 * will replace every character between keys '&lt;password&gt;' and '&lt;/password&gt;'. <b>note:</b> this feature is used at adapter level,
-	 * so one pipe affects all pipes in the pipeline (and multiple values in different pipes are merged)
-	 */
+	@Override
 	public void setHideRegex(String hideRegex) {
 		this.hideRegex = hideRegex;
 	}

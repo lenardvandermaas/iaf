@@ -15,6 +15,9 @@
 */
 package org.frankframework.senders;
 
+import jakarta.annotation.Nonnull;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 import org.frankframework.cache.ICache;
 import org.frankframework.cache.ICacheEnabled;
@@ -28,9 +31,6 @@ import org.frankframework.core.TimeoutException;
 import org.frankframework.processors.SenderWrapperProcessor;
 import org.frankframework.statistics.MetricsInitializer;
 import org.frankframework.stream.Message;
-
-import lombok.Getter;
-import lombok.Setter;
 
 /**
  * Baseclass for Wrappers for senders, that allows to get input from a session variable, and to store output in a session variable.
@@ -56,10 +56,10 @@ public abstract class SenderWrapperBase extends SenderWithParametersBase impleme
 	public void configure() throws ConfigurationException {
 		super.configure();
 		if (!isSenderConfigured()) {
-			throw new ConfigurationException(getLogPrefix()+"must have at least a sender configured");
+			throw new ConfigurationException("must have at least a sender configured");
 		}
 		if (StringUtils.isNotEmpty(getGetInputFromSessionKey()) && StringUtils.isNotEmpty(getGetInputFromFixedValue())) {
-			throw new ConfigurationException(getLogPrefix()+"cannot have both attributes inputFromSessionKey and inputFromFixedValue configured");
+			throw new ConfigurationException("cannot have both attributes inputFromSessionKey and inputFromFixedValue configured");
 		}
 		if (cache!=null) {
 			cache.configure(getName());
@@ -87,21 +87,15 @@ public abstract class SenderWrapperBase extends SenderWithParametersBase impleme
 
 	protected abstract boolean isSenderConfigured();
 
-	public abstract SenderResult doSendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException;
+	public abstract SenderResult doSendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException;
 
 	@Override
-	public SenderResult sendMessage(Message message, PipeLineSession session) throws SenderException, TimeoutException {
+	public @Nonnull SenderResult sendMessage(@Nonnull Message message, @Nonnull PipeLineSession session) throws SenderException, TimeoutException {
 		if (senderWrapperProcessor!=null) {
 			return senderWrapperProcessor.sendMessage(this, message, session);
 		}
 		return doSendMessage(message, session);
 	}
-
-	@Override
-	public String getLogPrefix() {
-		return super.getLogPrefix();
-	}
-
 
 	/** If set, input is taken from this session key, instead of regular input */
 	public void setGetInputFromSessionKey(String string) {

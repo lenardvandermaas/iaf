@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-import org.frankframework.configuration.ConfigurationException;
 import org.frankframework.core.Adapter;
 import org.frankframework.core.IPipe;
 import org.frankframework.core.IValidator;
@@ -19,29 +21,33 @@ import org.frankframework.core.PipeRunException;
 import org.frankframework.core.PipeRunResult;
 import org.frankframework.parameters.Parameter;
 import org.frankframework.pipes.EchoPipe;
-import org.frankframework.pipes.FixedResultPipe;
 import org.frankframework.stream.Message;
+import org.frankframework.stream.SerializableFileReference;
 import org.frankframework.testutil.MessageTestUtils;
 import org.frankframework.testutil.TestFileUtils;
+import org.frankframework.util.TemporaryDirectoryUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.util.FileSystemUtils;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import net.jcip.annotations.NotThreadSafe;
 
+@NotThreadSafe //should be picked up by surefire
 public class InputOutputPipeProcessorTest {
 
-	public static final String PIPE_RUN_RESULT_TEXT = "pipe run result";
 	public static final String INPUT_MESSAGE_TEXT = "input message";
-
-	private InputOutputPipeProcessor processor;
+	private EchoPipe pipe;
 	private PipeLine pipeLine;
+	private InputOutputPipeProcessor processor;
 	private PipeLineSession session;
-	private FixedResultPipe pipe;
-
 
 	@BeforeEach
-	public void setUp() throws ConfigurationException {
+	public void setUp() throws Exception {
+		FileSystemUtils.deleteRecursively(TemporaryDirectoryUtils.getTempDirectory(SerializableFileReference.TEMP_MESSAGE_DIRECTORY));
+
 		processor = new InputOutputPipeProcessor();
 		PipeProcessor chain = new PipeProcessor() {
 			@Override
@@ -61,13 +67,20 @@ public class InputOutputPipeProcessorTest {
 		owner.setName("PipeLine owner");
 		pipeLine.setOwner(owner);
 
-		pipe = new FixedResultPipe();
-		pipe.setReturnString(PIPE_RUN_RESULT_TEXT);
+		pipe = new EchoPipe();
+
 		PipeForward forward = new PipeForward();
 		forward.setName("success");
 		pipe.registerForward(forward);
 
 		session = new PipeLineSession();
+	}
+
+	// ensure that no files are in the 'restoreMovedElements' folder
+	@AfterEach
+	public void teardown() throws IOException {
+		Path tempDirectory = TemporaryDirectoryUtils.getTempDirectory(SerializableFileReference.TEMP_MESSAGE_DIRECTORY);
+		assertEquals(0, Files.list(tempDirectory).count());
 	}
 
 	@Test
@@ -95,6 +108,11 @@ public class InputOutputPipeProcessorTest {
 
 		String testOutputFile = TestFileUtils.getTestFile("/Util/CompactSaxHandler/output-chaintest.xml");
 		assertEquals(testOutputFile, prr.getResult().asString());
+		assertFalse(input.isNull(), "Input Message should not be closed, because it can be used in the session");
+
+		// Act & Assert that closing the session closes the input message
+		session.close();
+		assertTrue(input.isNull(), "Input Message should be closed");
 	}
 
 	@Test
@@ -130,29 +148,36 @@ public class InputOutputPipeProcessorTest {
 		assertEquals("DC2023-00020", session.getString("ref_identificatie"));
 		assertEquals("DC2022-012345", session.getString("ref_identificatie2"));
 
-		String testOutputFile = TestFileUtils.getTestFile("/Util/CompactSaxHandler/output.xml");
+		String testOutputFile = TestFileUtils.getTestFile("/Util/CompactSaxHandler/output.xml")
+				.replace("<Header/>", "<Header></Header>"); // RestoreMovedElementsHandler does not handle empty elements
 		assertEquals(testOutputFile, prr2.getResult().asString());
+		assertFalse(input.isNull(), "Input Message should not be closed, because it can be used in the session");
+		assertFalse(prr1.getResult().isNull(), "Input Message of pipe2 should not be closed, because it can be used in the session");
+
+		// Act & Assert that closing the session closes the input message
+		session.close();
+		assertTrue(input.isNull(), "Input Message should be closed");
+		assertTrue(prr1.getResult().isNull(), "Input Message of pipe2 should be closed");
 	}
 
-	public void testRestoreMovedElement(Object sessionVarContents) throws Exception {
-
-		FixedResultPipe pipe = new FixedResultPipe();
+	private void testRestoreMovedElement(Object sessionVarContents) throws Exception {
+		EchoPipe pipe = new EchoPipe();
+		pipe.setGetInputFromFixedValue("<xml>result [{sessionKey:replaceThis}]</xml>");
 		pipe.setRestoreMovedElements(true);
-		pipe.setReturnString("result [{sessionKey:replaceThis}]");
+		Message input = new Message("input");
+		session.put("replaceThis", sessionVarContents);
+
 		PipeForward forward = new PipeForward();
 		forward.setName("success");
+
 		pipe.registerForward(forward);
 		pipe.configure();
 		pipe.start();
 
-		Message input = new Message("input");
-
-		session.put("replaceThis", sessionVarContents);
-
 		PipeRunResult prr = processor.processPipe(pipeLine, pipe, input, session);
 
-		assertEquals("result [ReplacedValue]", prr.getResult().asString());
-
+		assertEquals("<xml>result [ReplacedValue]</xml>", prr.getResult().asString());
+		session.close();
 	}
 
 	@Test
@@ -183,7 +208,7 @@ public class InputOutputPipeProcessorTest {
 		pipe.configure();
 		pipe.start();
 
-		Message input = Message.asMessage(INPUT_MESSAGE_TEXT);
+		Message input = new Message(INPUT_MESSAGE_TEXT);
 
 		// This should be true
 		assertTrue(pipe.skipPipe(input, session));
@@ -203,14 +228,14 @@ public class InputOutputPipeProcessorTest {
 		pipe.configure();
 		pipe.start();
 
-		Message input = Message.asMessage("dummy");
+		Message input = new Message("dummy");
 		session.put("this-key-is-there", "the-key-the-value");
 
-		// This should be true
+		// This should be false
 		assertFalse(pipe.skipPipe(input, session));
 
 		// Act / Assert
-		assertThrows(PipeRunException.class, ()-> processor.processPipe(pipeLine, pipe, input, session));
+		assertThrows(PipeRunException.class, () -> processor.processPipe(pipeLine, pipe, input, session));
 	}
 
 	@Test
@@ -222,7 +247,7 @@ public class InputOutputPipeProcessorTest {
 
 		session.put("this-key-is-there", "value");
 
-		Message input = Message.asMessage(INPUT_MESSAGE_TEXT);
+		Message input = new Message(INPUT_MESSAGE_TEXT);
 
 		// This should be true
 		assertTrue(pipe.skipPipe(input, session));
@@ -256,8 +281,10 @@ public class InputOutputPipeProcessorTest {
 	@Test
 	public void testEmptyInputReplaced() throws Exception {
 		// Arrange
+		String expectedValue = "empty input replacement";
+
 		pipe.setSkipOnEmptyInput(true);
-		pipe.setEmptyInputReplacement("empty input replacement");
+		pipe.setEmptyInputReplacement(expectedValue);
 		pipe.configure();
 		pipe.start();
 
@@ -270,14 +297,16 @@ public class InputOutputPipeProcessorTest {
 		PipeRunResult prr = processor.processPipe(pipeLine, pipe, input, session);
 
 		// Assert
-		assertEquals(PIPE_RUN_RESULT_TEXT, prr.getResult().asString());
+		assertEquals(expectedValue, prr.getResult().asString());
 	}
 
 	@Test
 	public void testGetInputFromFixedValue() throws Exception {
 		// Arrange
+		String expectedValue = "fixed value return";
+
 		pipe.setSkipOnEmptyInput(true);
-		pipe.setGetInputFromFixedValue("fixed value return");
+		pipe.setGetInputFromFixedValue(expectedValue);
 		pipe.configure();
 		pipe.start();
 
@@ -290,7 +319,7 @@ public class InputOutputPipeProcessorTest {
 		PipeRunResult prr = processor.processPipe(pipeLine, pipe, input, session);
 
 		// Assert
-		assertEquals(PIPE_RUN_RESULT_TEXT, prr.getResult().asString());
+		assertEquals(expectedValue, prr.getResult().asString());
 	}
 
 	@Test
@@ -303,7 +332,8 @@ public class InputOutputPipeProcessorTest {
 
 		Message input = Message.nullMessage();
 
-		session.put("the-session-key", "session-key-value");
+		String expectedValue = "session-key-value";
+		session.put("the-session-key", expectedValue);
 
 		// This should be true, b/c input message is empty
 		assertTrue(pipe.skipPipe(input, session));
@@ -312,7 +342,7 @@ public class InputOutputPipeProcessorTest {
 		PipeRunResult prr = processor.processPipe(pipeLine, pipe, input, session);
 
 		// Assert
-		assertEquals(PIPE_RUN_RESULT_TEXT, prr.getResult().asString());
+		assertEquals(expectedValue, prr.getResult().asString());
 	}
 
 	@Test
@@ -324,7 +354,7 @@ public class InputOutputPipeProcessorTest {
 		pipe.configure();
 		pipe.start();
 
-		Message input = Message.asMessage(INPUT_MESSAGE_TEXT);
+		Message input = new Message(INPUT_MESSAGE_TEXT);
 
 		// This should be true, b/c input message is empty
 		assertTrue(pipe.skipPipe(input, session));

@@ -15,36 +15,37 @@ limitations under the License.
 */
 package org.frankframework.http.openapi;
 
-import jakarta.json.Json;
-import jakarta.json.JsonArray;
-import jakarta.json.JsonArrayBuilder;
-import jakarta.json.JsonObject;
-import jakarta.json.JsonObjectBuilder;
-import jakarta.json.JsonValue;
-import lombok.NoArgsConstructor;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.xerces.xs.XSModel;
-import org.frankframework.align.XmlTypeToJsonSchemaConverter;
-import org.frankframework.core.IAdapter;
-import org.frankframework.core.PipeLine;
-import org.frankframework.core.PipeLineExit;
-import org.frankframework.http.rest.ApiDispatchConfig;
-import org.frankframework.http.rest.ApiListener;
-import org.frankframework.http.rest.ApiServiceDispatcher;
-import org.frankframework.http.rest.MediaTypes;
-import org.frankframework.parameters.Parameter;
-import org.frankframework.pipes.Json2XmlValidator;
-import org.frankframework.util.AppConstants;
-import org.frankframework.util.DateFormatUtils;
-import org.springframework.util.MimeType;
-
-import javax.ws.rs.core.Response;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonArrayBuilder;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
+import jakarta.json.JsonValue;
+import jakarta.ws.rs.core.Response;
+import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.xerces.xs.XSModel;
+import org.frankframework.align.XmlTypeToJsonSchemaConverter;
+import org.frankframework.core.Adapter;
+import org.frankframework.core.PipeLine;
+import org.frankframework.core.PipeLineExit;
+import org.frankframework.http.rest.ApiDispatchConfig;
+import org.frankframework.http.rest.ApiListener;
+import org.frankframework.http.rest.ApiServiceDispatcher;
+import org.frankframework.http.rest.MediaTypes;
+import org.frankframework.parameters.IParameter;
+import org.frankframework.parameters.ParameterType;
+import org.frankframework.pipes.Json2XmlValidator;
+import org.frankframework.util.AppConstants;
+import org.frankframework.util.DateFormatUtils;
+import org.springframework.util.MimeType;
 
 @NoArgsConstructor(access = lombok.AccessLevel.PRIVATE)
 public class OpenApiGenerator {
@@ -71,7 +72,7 @@ public class OpenApiGenerator {
 				JsonObjectBuilder methodBuilder = Json.createObjectBuilder();
 				listener = config.getApiListener(method);
 				if (listener != null && listener.getReceiver() != null) {
-					IAdapter adapter = listener.getReceiver().getAdapter();
+					Adapter adapter = listener.getReceiver().getAdapter();
 					if (StringUtils.isNotEmpty(adapter.getDescription())) {
 						methodBuilder.add("summary", adapter.getDescription());
 					}
@@ -114,7 +115,7 @@ public class OpenApiGenerator {
 		return serversArray;
 	}
 
-	private static void mapParamsInRequest(IAdapter adapter, ApiListener listener, JsonObjectBuilder methodBuilder) {
+	private static void mapParamsInRequest(Adapter adapter, ApiListener listener, JsonObjectBuilder methodBuilder) {
 		String uriPattern = listener.getUriPattern();
 		JsonArrayBuilder paramBuilder = Json.createArrayBuilder();
 		mapPathParameters(paramBuilder, uriPattern);
@@ -123,10 +124,10 @@ public class OpenApiGenerator {
 		// query params
 		Json2XmlValidator inputValidator = ApiServiceDispatcher.getJsonValidator(adapter.getPipeLine(), false);
 		if (inputValidator != null && !inputValidator.getParameterList().isEmpty()) {
-			for (Parameter parameter : inputValidator.getParameterList()) {
+			for (IParameter parameter : inputValidator.getParameterList()) {
 				String parameterSessionKey = parameter.getSessionKey();
 				if (StringUtils.isNotEmpty(parameterSessionKey) && !"headers".equals(parameterSessionKey) && !paramsFromHeaderAndCookie.contains(parameterSessionKey)) {
-					Parameter.ParameterType parameterType = parameter.getType() != null ? parameter.getType() : Parameter.ParameterType.STRING;
+					ParameterType parameterType = parameter.getType() != null ? parameter.getType() : ParameterType.STRING;
 					paramBuilder.add(addParameterToSchema(parameterSessionKey, "query", false, Json.createObjectBuilder()
 							.add("type", parameterType.toString().toLowerCase())));
 				}
@@ -177,7 +178,7 @@ public class OpenApiGenerator {
 		return param;
 	}
 
-	private static void mapRequest(IAdapter adapter, MediaTypes consumes, JsonObjectBuilder methodBuilder) {
+	private static void mapRequest(Adapter adapter, MediaTypes consumes, JsonObjectBuilder methodBuilder) {
 		PipeLine pipeline = adapter.getPipeLine();
 		Json2XmlValidator inputValidator = ApiServiceDispatcher.getJsonValidator(pipeline, false);
 		if (inputValidator != null && StringUtils.isNotEmpty(inputValidator.getRoot())) {
@@ -194,7 +195,7 @@ public class OpenApiGenerator {
 		return mimeType.getType() + "/" + mimeType.getSubtype();
 	}
 
-	private static JsonObjectBuilder mapResponses(IAdapter adapter, MimeType contentType, JsonObjectBuilder schemas) {
+	private static JsonObjectBuilder mapResponses(Adapter adapter, MimeType contentType, JsonObjectBuilder schemas) {
 		JsonObjectBuilder responses = Json.createObjectBuilder();
 
 		PipeLine pipeline = adapter.getPipeLine();

@@ -23,20 +23,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.annotation.Nonnull;
-import javax.servlet.annotation.ServletSecurity.TransportGuarantee;
-
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.context.EnvironmentAware;
-import org.springframework.core.env.Environment;
-
+import jakarta.annotation.Nonnull;
+import jakarta.servlet.annotation.ServletSecurity.TransportGuarantee;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.log4j.Log4j2;
+import org.apache.commons.lang3.StringUtils;
 import org.frankframework.lifecycle.DynamicRegistration;
 import org.frankframework.lifecycle.DynamicRegistration.Servlet;
 import org.frankframework.util.EnumUtils;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.context.EnvironmentAware;
+import org.springframework.core.env.Environment;
 
 //servlets:
 //  IAF-API:
@@ -60,9 +58,9 @@ public class ServletConfiguration implements InitializingBean, EnvironmentAware 
 	private @Getter @Setter boolean enabled = true;
 	private @Getter TransportGuarantee transportGuarantee;
 	private @Getter String authenticatorName = null;
-	private @Getter javax.servlet.Servlet servlet;
+	private @Getter jakarta.servlet.Servlet servlet;
 	private @Setter Environment environment;
-	private @Getter Map<String, String> initParameters = new LinkedHashMap<>();
+	private final @Getter Map<String, String> initParameters = new LinkedHashMap<>();
 
 	@Override
 	public void afterPropertiesSet() {
@@ -104,7 +102,7 @@ public class ServletConfiguration implements InitializingBean, EnvironmentAware 
 		loadProperties();
 	}
 
-	public void setServlet(javax.servlet.Servlet servlet) {
+	public void setServlet(jakarta.servlet.Servlet servlet) {
 		this.servlet = servlet;
 	}
 
@@ -145,7 +143,7 @@ public class ServletConfiguration implements InitializingBean, EnvironmentAware 
 	private void configureServletSecurity(String propertyPrefix) {
 		String roleNames = environment.getProperty(propertyPrefix+"securityRoles");
 		if(environment.containsProperty(propertyPrefix+"securityroles")) { //Deprecated warning
-			log.warn("property ["+propertyPrefix+"securityroles] has been replaced with ["+propertyPrefix+"securityRoles"+"]");
+			log.warn("property [{}securityroles] has been replaced with [{}securityRoles]", propertyPrefix, propertyPrefix);
 			roleNames = environment.getProperty(propertyPrefix+"securityroles");
 		}
 
@@ -192,13 +190,13 @@ public class ServletConfiguration implements InitializingBean, EnvironmentAware 
 	@Override
 	public String toString() {
 		StringBuilder builder = new StringBuilder(" servlet ["+name+"]");
-		builder.append(" url(s) "+urlMapping);
-		builder.append(" loadOnStartup ["+loadOnStartup+"]");
-		builder.append(" protocol "+(transportGuarantee==TransportGuarantee.CONFIDENTIAL?"[HTTPS]":"[HTTP]"));
-		builder.append(" authenticatior ["+authenticatorName+"]");
+		builder.append(" url(s) ").append(urlMapping);
+		builder.append(" loadOnStartup [").append(loadOnStartup).append("]");
+		builder.append(" protocol ").append(transportGuarantee==TransportGuarantee.CONFIDENTIAL?"[HTTPS]":"[HTTP]");
+		builder.append(" authenticatior [").append(authenticatorName).append("]");
 
 		if(isAuthenticationEnabled()) {
-			builder.append(" roles "+getSecurityRoles());
+			builder.append(" roles ").append(getSecurityRoles());
 		} else {
 			builder.append(" with no authentication enabled!");
 		}

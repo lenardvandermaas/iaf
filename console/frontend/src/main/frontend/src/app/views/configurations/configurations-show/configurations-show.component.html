@@ -1,6 +1,3 @@
-<!-- Angular ui-router hack-->
-<div ui-view></div>
-
 <div class="wrapper wrapper-content animated fadeInRight">
   <div class="row">
     <div class="col-lg-12 tabs-container">
@@ -12,9 +9,7 @@
           *ngFor="let configuration of configurations"
           [ngClass]="{ active: selectedConfiguration === configuration.name }"
         >
-          <a (click)="changeConfiguration(configuration.name)">{{
-            configuration.name
-          }}</a>
+          <a (click)="changeConfiguration(configuration.name)">{{ configuration.name }}</a>
         </li>
       </ul>
     </div>
@@ -42,17 +37,14 @@
           </div>
           <br />
           <div class="pull-right">
-            <button
-              (click)="clipboard()"
-              class="btn btn-default btn-xs"
-              title="Copy Configuration"
-              type="button"
-            >
+            <button (click)="clipboard()" class="btn btn-default btn-xs" title="Copy Configuration" type="button">
               Copy <i class="fa fa-clipboard"></i>
             </button>
           </div>
           <div class="clearfix"></div>
-          <pre [text]="configuration" appFormatCode></pre>
+        </div>
+        <div class="summary editor">
+          <app-monaco-editor #editor [options]="{ readOnly: true }"></app-monaco-editor>
         </div>
       </div>
     </div>

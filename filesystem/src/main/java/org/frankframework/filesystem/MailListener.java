@@ -1,5 +1,5 @@
 /*
-   Copyright 2020, 2022-2023 WeAreFrank!
+   Copyright 2020, 2022-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ package org.frankframework.filesystem;
 import java.io.IOException;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-
+import jakarta.annotation.Nonnull;
 import org.apache.commons.lang3.StringUtils;
 import org.xml.sax.SAXException;
 
@@ -29,8 +28,8 @@ import org.frankframework.core.ListenerException;
 import org.frankframework.receivers.RawMessageWrapper;
 import org.frankframework.receivers.Receiver;
 import org.frankframework.stream.Message;
+import org.frankframework.stream.MessageBuilder;
 import org.frankframework.xml.SaxElementBuilder;
-import org.frankframework.xml.XmlWriter;
 
 /**
  * Implementation of a {@link FileSystemListener} that enables a {@link Receiver} to look in a folder
@@ -61,45 +60,58 @@ import org.frankframework.xml.XmlWriter;
  */
 public abstract class MailListener<M, A, S extends IMailFileSystem<M,A>> extends FileSystemListener<M,S> {
 
-	public static final String EMAIL_MESSAGE_TYPE="email";
-	public static final String MIME_MESSAGE_TYPE="mime";
-
 	private @Getter String storeEmailAsStreamInSessionKey;
 	private @Getter boolean simple = false;
 
+	public enum MessageType implements IMessageType {
+		EMAIL,
+		CONTENTS,
+		MIME,
+		NAME,
+		PATH;
+	}
+
 	{
-		setMessageType(EMAIL_MESSAGE_TYPE);
+		setMessageType(MessageType.EMAIL);
 		setMessageIdPropertyKey(IMailFileSystem.MAIL_MESSAGE_ID);
 	}
 
 
 	@Override
 	public Message extractMessage(@Nonnull RawMessageWrapper<M> rawMessage, @Nonnull Map<String, Object> context) throws ListenerException {
-		if (MIME_MESSAGE_TYPE.equals(getMessageType())) {
-			try {
-				return getFileSystem().getMimeContent(rawMessage.getRawMessage());
-			} catch (FileSystemException e) {
-				throw new ListenerException("cannot get MimeContents",e);
+		return switch (getMessageType().name()) {
+			case "MIME" -> {
+				try {
+					yield getFileSystem().getMimeContent(rawMessage.getRawMessage());
+				} catch (FileSystemException e) {
+					throw new ListenerException("cannot get MimeContents",e);
+				}
 			}
-		}
-		if (!EMAIL_MESSAGE_TYPE.equals(getMessageType())) {
-			return super.extractMessage(rawMessage, context);
-		}
-		XmlWriter writer = new XmlWriter();
-		try (SaxElementBuilder emailXml = new SaxElementBuilder("email",writer)) {
-			if (isSimple()) {
-				MailFileSystemUtils.addEmailInfoSimple(getFileSystem(), rawMessage.getRawMessage(), emailXml);
-			} else {
-				getFileSystem().extractEmail(rawMessage.getRawMessage(), emailXml);
+			case "EMAIL" -> {
+				final MessageBuilder msgBuilder;
+				try {
+					msgBuilder = new MessageBuilder();
+				} catch (IOException e) {
+					throw new ListenerException("unable to create XmlWriter", e);
+				}
+
+				try (SaxElementBuilder emailXml = new SaxElementBuilder("email", msgBuilder.asXmlWriter())) {
+					if (isSimple()) {
+						MailFileSystemUtils.addEmailInfoSimple(getFileSystem(), rawMessage.getRawMessage(), emailXml);
+					} else {
+						getFileSystem().extractEmail(rawMessage.getRawMessage(), emailXml);
+					}
+					if (StringUtils.isNotEmpty(getStoreEmailAsStreamInSessionKey())) {
+						Message mimeContent = getFileSystem().getMimeContent(rawMessage.getRawMessage());
+						context.put(getStoreEmailAsStreamInSessionKey(), mimeContent.asInputStream());
+					}
+				} catch (SAXException | IOException | FileSystemException e) {
+					throw new ListenerException(e);
+				}
+				yield msgBuilder.build();
 			}
-			if (StringUtils.isNotEmpty(getStoreEmailAsStreamInSessionKey())) {
-				Message mimeContent = getFileSystem().getMimeContent(rawMessage.getRawMessage());
-				context.put(getStoreEmailAsStreamInSessionKey(), mimeContent.asInputStream());
-			}
-		} catch (SAXException | IOException | FileSystemException e) {
-			throw new ListenerException(e);
-		}
-		return new Message(writer.toString());
+			default -> super.extractMessage(rawMessage, context);
+		};
 	}
 
 	/**
@@ -121,17 +133,16 @@ public abstract class MailListener<M, A, S extends IMailFileSystem<M,A>> extends
 	/**
 	 * Determines the contents of the message that is sent to the Pipeline. can be one of:
 	 * <ul>
-	 * <li><code>email</code>, for an XML containing most relevant information, except the body and the attachments</li>
-	 * <li><code>contents</code>, for the body of the message</li>
-	 * <li><code>mime</code>, for the MIME contents of the message</li>
-	 * <li><code>name</code> or <code>path</code>, for an internal handle of mail message, that can be used by a related MailFileSystemSender</li>
-	 * <li>the key of any header present in the message context</li>
+	 * <li><code>EMAIL</code>, for an XML containing most relevant information, except the body and the attachments</li>
+	 * <li><code>CONTENTS</code>, for the body of the message</li>
+	 * <li><code>MIME</code>, for the MIME contents of the message</li>
+	 * <li><code>NAME</code> or <code>PATH</code>, for an internal handle of mail message, that can be used by a related MailFileSystemSender</li>
+	 * <li><code>HEADER</code>, for the value of the header matching the searchKey in the message context</li>
 	 * </ul>
 	 *
-	 * @ff.default email
+	 * @ff.default EMAIL
 	 */
-	@Override
-	public void setMessageType(String messageType) {
+	public void setMessageType(MessageType messageType) {
 		super.setMessageType(messageType);
 	}
 

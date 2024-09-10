@@ -1,5 +1,5 @@
 /*
-   Copyright 2023 WeAreFrank!
+   Copyright 2023-2024 WeAreFrank!
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -23,21 +23,25 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+import org.apache.logging.log4j.LogManager;
 
 public class StringUtil {
 
+	public static final ToStringStyle OMIT_PASSWORD_FIELDS_STYLE = new FieldNameSensitiveToStringStyle();
 	private static final Pattern DEFAULT_SPLIT_PATTERN = Pattern.compile("\\s*,+\\s*");
 
 	/**
 	 * Concatenates two strings, if specified, uses the separator in between two strings.
 	 * Does not use any separators if both or one of the strings are empty.
-	 *<p>
-	 *     Example:
-	 *     <pre>
+	 * <p>
+	 * Example:
+	 * <pre>
 	 *         String a = "We";
 	 *         String b = "Frank";
 	 *         String separator = "Are";
@@ -45,9 +49,10 @@ public class StringUtil {
 	 *         System.out.println(res); // prints "WeAreFrank"
 	 *     </pre>
 	 * </p>
-	 * @param part1 First string
+	 *
+	 * @param part1     First string
 	 * @param separator Specified separator
-	 * @param part2 Second string
+	 * @param part2     Second string
 	 * @return the concatenated string
 	 */
 	public static String concatStrings(String part1, String separator, String part2) {
@@ -55,15 +60,15 @@ public class StringUtil {
 	}
 
 	public static String concat(String separator, String... parts) {
-		int i=0;
-		while(i<parts.length && StringUtils.isEmpty(parts[i])) {
+		int i = 0;
+		while (i < parts.length && StringUtils.isEmpty(parts[i])) {
 			i++;
 		}
-		if (i>=parts.length) {
+		if (i >= parts.length) {
 			return null;
 		}
-		StringBuilder result= new StringBuilder(parts[i]);
-		while(++i<parts.length) {
+		StringBuilder result = new StringBuilder(parts[i]);
+		while (++i < parts.length) {
 			if (StringUtils.isNotEmpty(parts[i])) {
 				result.append(separator).append(parts[i]);
 			}
@@ -72,8 +77,8 @@ public class StringUtil {
 	}
 
 	/**
-	 * @see #hide(String)
 	 * @return hidden string with all characters replaced with '*'
+	 * @see #hide(String)
 	 */
 	public static String hide(String string) {
 		return hide(string, 0);
@@ -83,9 +88,9 @@ public class StringUtil {
 	 * Hides the string based on the mode given.
 	 * Mode 1 hides starting from the second character of the string
 	 * until, excluding, the last character.
-	 *<p>
-	 *     Example:
-	 *     <pre>
+	 * <p>
+	 * Example:
+	 * <pre>
 	 *         String a = "test";
 	 *         String res = StringUtil.hide(a, 1);
 	 *         System.out.println(res) // prints "t**t"
@@ -109,36 +114,30 @@ public class StringUtil {
 	}
 
 	/**
-	 * Hides the first half of the string.
-	 * @see #hideAll(String, String, int)
-	 */
-	public static String hideFirstHalf(String inputString, String regex) {
-		return hideAll(inputString, regex, 1);
-	}
-
-	/**
 	 * Hide all characters matching the given Regular Expression.
 	 * If the set of expressions is null or empty it will return the raw message.
+	 *
 	 * @see #hideAll(String, Collection, int)
 	 */
-	public static String hideAll(String message, Collection<String> collection) {
+	public static String hideAll(String message, Collection<Pattern> collection) {
 		return hideAll(message, collection, 0);
 	}
 
 	/**
 	 * Hide all characters matching the given Regular Expression.
 	 * If the set of expressions is null or empty it will return the raw message
+	 *
 	 * @see #hideAll(String, String, int)
 	 */
-	public static String hideAll(String message, Collection<String> collection, int mode) {
-		if(collection == null || collection.isEmpty() || StringUtils.isEmpty(message))
-			return message; //Nothing to do!
+	public static String hideAll(String message, Collection<Pattern> collection, int mode) {
+		if (collection == null || collection.isEmpty() || StringUtils.isEmpty(message))
+			return message; // Nothing to do!
 
-		for (String regex : collection) {
-			if (StringUtils.isNotEmpty(regex))
-				message = hideAll(message, regex, mode);
+		String result = message;
+		for (Pattern regex : collection) {
+			result = hideAll(result, regex, mode);
 		}
-		return message;
+		return result;
 	}
 
 	/**
@@ -154,15 +153,23 @@ public class StringUtil {
 	 * Else, all of it.
 	 */
 	public static String hideAll(String inputString, String regex, int mode) {
+		return hideAll(inputString, Pattern.compile(regex), mode);
+	}
+
+	/**
+	 * Hides the input string according to the given regex and mode.
+	 * If mode is set to 1, then the first half of the string gets hidden.
+	 * Else, all of it.
+	 */
+	public static String hideAll(String inputString, Pattern regex, int mode) {
 		StringBuilder result = new StringBuilder();
-		Pattern pattern = Pattern.compile(regex);
-		Matcher matcher = pattern.matcher(inputString);
+		Matcher matcher = regex.matcher(inputString);
 		int previous = 0;
 		while (matcher.find()) {
 			result.append(inputString, previous, matcher.start());
 			int len = matcher.end() - matcher.start();
 			if (mode == 1) {
-				int lenFirstHalf = (int) Math.ceil((double) len / 2);
+				int lenFirstHalf = (len + 1) >> 1;
 				result.append(StringUtils.repeat("*", lenFirstHalf));
 				result.append(inputString, matcher.start()
 						+ lenFirstHalf, matcher.start() + len);
@@ -187,8 +194,9 @@ public class StringUtil {
 		Pattern pattern = Pattern.compile(regex);
 		Matcher matcher = pattern.matcher(string);
 		int count = 0;
-		while (matcher.find())
+		while (matcher.find()) {
 			count++;
+		}
 		return count;
 	}
 
@@ -213,7 +221,7 @@ public class StringUtil {
 	public static String safeCollectionToString(Collection<?> collection) {
 		StringBuilder sb = new StringBuilder();
 		try {
-			for(Object o: collection) {
+			for (Object o : collection) {
 				if (sb.length() > 0) sb.append(", ");
 				sb.append(o);
 			}
@@ -282,5 +290,28 @@ public class StringUtil {
 		Pattern splitPattern = Pattern.compile("\\s*[" + delim + "]+\\s*");
 		return splitPattern.splitAsStream(input.trim())
 				.filter(StringUtils::isNotBlank);
+	}
+
+	/**
+	 * toStrings and concatenates all fields of the given object, except fields containing the word 'password' or 'secret'.
+	 * 'fail-safe' method, returns toString if it is unable to use reflection.
+	 * Uses the {@link #OMIT_PASSWORD_FIELDS_STYLE OMIT_PASSWORD_FIELDS_STYLE}.
+	 *
+	 * @see org.apache.commons.lang3.builder.ToStringBuilder#reflectionToString
+	 */
+	@Nonnull
+	public static String reflectionToString(@Nullable Object object) {
+		if (object == null) {
+			return "<null>";
+		}
+
+		try {
+			return new ReflectionToStringBuilder(object, OMIT_PASSWORD_FIELDS_STYLE).toString();
+		} catch (Exception e) { // amongst others, IllegalAccess-, ConcurrentModification- and Security-Exceptions
+			LogManager.getLogger(object).warn("exception getting string representation of object", e);
+
+			// In case this method is called from the objects toString method, we cannot call toString here!
+			return "cannot get toString(): " + e.getMessage();
+		}
 	}
 }
